@@ -5,46 +5,58 @@ import tkinter as tk
 from tkinter import ttk
 import winsound  # Windows only; modify for other OS
 
+# Configuration Variables
+CHECK_INTERVAL_MS = 10000  # Time between checks in milliseconds (10000 ms = 10 seconds)
+DEFAULT_BEEP_DURATION_MS = 10000  # Default total beep duration in milliseconds (10 seconds)
+WINDOW_SIZE = "450x370"  # Window dimensions (width x height)
+LOG_FILE_PATH = "network_log.txt"  # Path to the log file
+PING_URL = "google.com"  # URL to ping
+BEEP_FREQUENCY_HZ = 1000  # Beep frequency in Hertz
+BEEP_LENGTH_MS = 300  # Duration of each individual beep in milliseconds
+PAUSE_LENGTH_MS = 700  # Pause duration between beeps in milliseconds
+MIN_BEEP_DURATION_MS = 100  # Minimum allowed beep duration
+MAX_BEEP_DURATION_MS = 10000  # Maximum allowed beep duration
+
 class NetworkMonitor:
     def __init__(self, root):
         self.root = root
         self.root.title("Network Monitor")
-        self.root.geometry("450x370")  # Increased height slightly for new label
+        self.root.geometry(WINDOW_SIZE)
 
         # Variables
         self.sound_enabled = tk.BooleanVar(value=True)
-        self.beep_duration = tk.IntVar(value=10000)  # Default 10 seconds total
+        self.beep_duration = tk.IntVar(value=DEFAULT_BEEP_DURATION_MS)
         self.running = False
         self.last_status = None
-        self.start_time = None  # To store the start time
+        self.start_time = None
+        self.first_status_set = False  # Track if first status has been set
 
         # GUI Setup
         self.setup_gui()
 
         # Log file
-        self.log_file = "network_log.txt"
+        self.log_file = LOG_FILE_PATH
+
+        # Initial beep when program starts
+        if sys.platform == 'win32':
+            winsound.Beep(BEEP_FREQUENCY_HZ, BEEP_LENGTH_MS)
 
         # Start monitoring
         self.start_monitoring()
 
     def setup_gui(self):
-        # Start Time Label
         self.start_time_label = ttk.Label(self.root, text="Start Time: Not started")
         self.start_time_label.pack(pady=5)
 
-        # Status Label
         self.status_label = ttk.Label(self.root, text="Status: Initializing...")
         self.status_label.pack(pady=5)
 
-        # Attempts Display
         self.attempts_text = tk.Text(self.root, height=5, width=50)
         self.attempts_text.pack(pady=5)
 
-        # Log Display (status changes only)
         self.log_text = tk.Text(self.root, height=5, width=50)
         self.log_text.pack(pady=5)
 
-        # Sound Checkbox
         self.sound_check = ttk.Checkbutton(
             self.root,
             text="Enable Sound Alerts",
@@ -52,12 +64,10 @@ class NetworkMonitor:
         )
         self.sound_check.pack(pady=5)
 
-        # Total Beep Duration
         ttk.Label(self.root, text="Total Beep Duration (ms):").pack(pady=2)
         self.duration_entry = ttk.Entry(self.root, textvariable=self.beep_duration)
         self.duration_entry.pack(pady=2)
 
-        # Start/Stop Button
         self.toggle_button = ttk.Button(
             self.root,
             text="Stop Monitoring",
@@ -65,7 +75,7 @@ class NetworkMonitor:
         )
         self.toggle_button.pack(pady=5)
 
-    def ping_website(self, url="google.com"):
+    def ping_website(self, url=PING_URL):
         hostname = url.split('/')[0]
         if sys.platform == 'win32':
             response = os.system(f"ping -n 1 {hostname} > nul 2>&1")
@@ -79,19 +89,16 @@ class NetworkMonitor:
             return
 
         try:
-            duration = max(100, min(total_duration, 10000))  # Limit 100ms-10s
-            beep_length = 500  # 500ms per beep
-            pause_length = 500  # 500ms pause between beeps
-            cycles = duration // (beep_length + pause_length)  # Number of full cycles
+            duration = max(MIN_BEEP_DURATION_MS, min(total_duration, MAX_BEEP_DURATION_MS))
+            cycles = duration // (BEEP_LENGTH_MS + PAUSE_LENGTH_MS)
 
             for _ in range(cycles):
-                winsound.Beep(1000, beep_length)  # 1000 Hz for 500ms
-                time.sleep(pause_length / 1000)  # Pause in seconds
+                winsound.Beep(BEEP_FREQUENCY_HZ, BEEP_LENGTH_MS)
+                time.sleep(PAUSE_LENGTH_MS / 1000)
 
-            # Handle remaining time if duration isn't perfectly divisible
-            remaining = duration % (beep_length + pause_length)
+            remaining = duration % (BEEP_LENGTH_MS + PAUSE_LENGTH_MS)
             if remaining > 0:
-                winsound.Beep(1000, min(remaining, beep_length))
+                winsound.Beep(BEEP_FREQUENCY_HZ, min(remaining, BEEP_LENGTH_MS))
         except:
             pass  # Ignore invalid duration or sound errors
 
@@ -112,14 +119,15 @@ class NetworkMonitor:
             self.log_text.insert(tk.END, message + "\n")
             self.log_text.see(tk.END)
 
-            # Write to file
             with open(self.log_file, 'a') as f:
                 f.write(message + "\n")
 
-            # Play alternating beep on status change
-            self.play_alternating_beep(self.beep_duration.get())
+            # Beep only after first status change
+            if self.first_status_set:
+                self.play_alternating_beep(self.beep_duration.get())
 
         self.last_status = status
+        self.first_status_set = True  # Mark first status as set after first check
 
     def monitor(self):
         if not self.running:
@@ -127,13 +135,13 @@ class NetworkMonitor:
 
         status = self.ping_website()
         self.log_status(status)
-        self.root.after(5000, self.monitor)  # Check every 5 seconds
+        self.root.after(CHECK_INTERVAL_MS, self.monitor)
 
     def start_monitoring(self):
         if not self.running:
             self.running = True
             self.toggle_button.config(text="Stop Monitoring")
-            self.start_time = time.strftime("%Y-%m-%d %H:%M:%S")  # Record start time
+            self.start_time = time.strftime("%Y-%m-%d %H:%M:%S")
             self.start_time_label.config(text=f"Start Time: {self.start_time}")
             self.monitor()
 
