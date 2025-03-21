@@ -14,7 +14,7 @@ class NetworkMonitor:
 
         # Variables
         self.sound_enabled = tk.BooleanVar(value=True)
-        self.beep_duration = tk.IntVar(value=1000)  # Default 1 second
+        self.beep_duration = tk.IntVar(value=10000)  # Default 10 seconds total
         self.running = False
         self.last_status = None
 
@@ -48,8 +48,8 @@ class NetworkMonitor:
         )
         self.sound_check.pack(pady=5)
 
-        # Beep Duration
-        ttk.Label(self.root, text="Beep Duration (ms):").pack(pady=2)
+        # Total Beep Duration
+        ttk.Label(self.root, text="Total Beep Duration (ms):").pack(pady=2)
         self.duration_entry = ttk.Entry(self.root, textvariable=self.beep_duration)
         self.duration_entry.pack(pady=2)
 
@@ -68,6 +68,28 @@ class NetworkMonitor:
         else:
             response = os.system(f"ping -c 1 {hostname} > /dev/null 2>&1")
         return response == 0
+
+    def play_alternating_beep(self, total_duration):
+        """Play alternating beeps for the total duration."""
+        if not (self.sound_enabled.get() and sys.platform == 'win32'):
+            return
+
+        try:
+            duration = max(100, min(total_duration, 10000))  # Limit 100ms-10s
+            beep_length = 500  # 500ms per beep
+            pause_length = 500  # 500ms pause between beeps
+            cycles = duration // (beep_length + pause_length)  # Number of full cycles
+
+            for _ in range(cycles):
+                winsound.Beep(1000, beep_length)  # 1000 Hz for 500ms
+                time.sleep(pause_length / 1000)  # Pause in seconds
+
+            # Handle remaining time if duration isn't perfectly divisible
+            remaining = duration % (beep_length + pause_length)
+            if remaining > 0:
+                winsound.Beep(1000, min(remaining, beep_length))
+        except:
+            pass  # Ignore invalid duration or sound errors
 
     def log_status(self, status):
         timestamp = time.strftime("%Y-%m-%d %H:%M:%S")
@@ -90,13 +112,8 @@ class NetworkMonitor:
             with open(self.log_file, 'a') as f:
                 f.write(message + "\n")
 
-            # Play sound if enabled
-            if self.sound_enabled.get() and sys.platform == 'win32':
-                try:
-                    duration = max(100, min(self.beep_duration.get(), 10000))  # Limit 100ms-10s
-                    winsound.Beep(1000, duration)
-                except:
-                    pass  # Ignore invalid duration
+            # Play alternating beep on status change
+            self.play_alternating_beep(self.beep_duration.get())
 
         self.last_status = status
 
