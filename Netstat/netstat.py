@@ -5,18 +5,18 @@ import tkinter as tk
 from tkinter import ttk
 import winsound  # Windows only; modify for other OS
 
-
 class NetworkMonitor:
     def __init__(self, root):
         self.root = root
         self.root.title("Network Monitor")
-        self.root.geometry("450x350")
+        self.root.geometry("450x370")  # Increased height slightly for new label
 
         # Variables
         self.sound_enabled = tk.BooleanVar(value=True)
         self.beep_duration = tk.IntVar(value=10000)  # Default 10 seconds total
         self.running = False
         self.last_status = None
+        self.start_time = None  # To store the start time
 
         # GUI Setup
         self.setup_gui()
@@ -28,6 +28,10 @@ class NetworkMonitor:
         self.start_monitoring()
 
     def setup_gui(self):
+        # Start Time Label
+        self.start_time_label = ttk.Label(self.root, text="Start Time: Not started")
+        self.start_time_label.pack(pady=5)
+
         # Status Label
         self.status_label = ttk.Label(self.root, text="Status: Initializing...")
         self.status_label.pack(pady=5)
@@ -129,6 +133,8 @@ class NetworkMonitor:
         if not self.running:
             self.running = True
             self.toggle_button.config(text="Stop Monitoring")
+            self.start_time = time.strftime("%Y-%m-%d %H:%M:%S")  # Record start time
+            self.start_time_label.config(text=f"Start Time: {self.start_time}")
             self.monitor()
 
     def stop_monitoring(self):
@@ -145,7 +151,6 @@ class NetworkMonitor:
     def on_closing(self):
         self.running = False
         self.root.destroy()
-
 
 if __name__ == "__main__":
     root = tk.Tk()
