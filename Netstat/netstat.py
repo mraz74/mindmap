@@ -6,14 +6,14 @@ from tkinter import ttk
 import winsound  # Windows only; modify for other OS
 
 # Configuration Variables
-CHECK_INTERVAL_MS = 10000  # Time between checks in milliseconds (10000 ms = 10 seconds)
-DEFAULT_BEEP_DURATION_MS = 10000  # Default total beep duration in milliseconds (10 seconds)
+CHECK_INTERVAL_MS = 5000  # Time between checks in milliseconds
+DEFAULT_BEEP_DURATION_MS = 5000  # Default total beep duration in milliseconds (5 seconds)
 WINDOW_SIZE = "450x370"  # Window dimensions (width x height)
 LOG_FILE_PATH = "network_log.txt"  # Path to the log file
 PING_URL = "google.com"  # URL to ping
-BEEP_FREQUENCY_HZ = 1000  # Beep frequency in Hertz
-BEEP_LENGTH_MS = 300  # Duration of each individual beep in milliseconds
-PAUSE_LENGTH_MS = 700  # Pause duration between beeps in milliseconds
+BEEP_FREQUENCY_HZ = 500  # Beep frequency in Hertz
+BEEP_LENGTH_MS = 400  # Duration of each individual beep in milliseconds
+PAUSE_LENGTH_MS = 600  # Pause duration between beeps in milliseconds
 MIN_BEEP_DURATION_MS = 100  # Minimum allowed beep duration
 MAX_BEEP_DURATION_MS = 10000  # Maximum allowed beep duration
 
