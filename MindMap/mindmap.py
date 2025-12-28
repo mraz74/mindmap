@@ -5,6 +5,7 @@ import os
 import webbrowser
 import platform
 import subprocess
+import re
 
 
 # --- NOTE DIALOG CLASS ---
@@ -27,20 +28,28 @@ class NoteDialog(tk.Toplevel):
                                                                                                              pady=5)
 
         # Main Text Box
-        tk.Label(self, text="Content (Ctrl+B: Bold | *: Bullet | 1.: Numbering):", font=("Segoe UI", 8, "italic"),
+        tk.Label(self, text="Content (Ctrl+B: Bold | *: Bullet | 1.: Numbering | Links auto-detected):",
+                 font=("Segoe UI", 8, "italic"),
                  fg="#7f8c8d").pack(anchor="w", padx=15)
         self.text_area = tk.Text(self, font=("Segoe UI", 11), undo=True, wrap="word", padx=10, pady=10)
         self.text_area.pack(fill="both", expand=True, padx=15, pady=5)
 
         # Tag Configuration
         self.text_area.tag_configure("bold", font=("Segoe UI", 11, "bold"))
+        self.text_area.tag_configure("link", foreground="blue", underline=True)
+
+        # Bindings for link interaction
+        self.text_area.tag_bind("link", "<Button-1>", self.open_link)
+        self.text_area.tag_bind("link", "<Enter>", lambda e: self.text_area.config(cursor="hand2"))
+        self.text_area.tag_bind("link", "<Leave>", lambda e: self.text_area.config(cursor=""))
 
         if initial_data:
             self.text_area.insert("1.0", initial_data.get("content", ""))
+            self.scan_for_links()
 
         # Bindings for formatting
         self.text_area.bind("<Control-b>", self.toggle_bold)
-        self.text_area.bind("<KeyRelease-space>", self.handle_auto_format)
+        self.text_area.bind("<KeyRelease-space>", self.handle_space)
         self.text_area.bind("<Return>", self.handle_enter)
 
         # Save Button
@@ -59,34 +68,59 @@ class NoteDialog(tk.Toplevel):
         except tk.TclError:
             pass
 
-    def handle_auto_format(self, event):
-        """ Triggered when Space is pressed to convert symbols to markers """
+    def scan_for_links(self):
+        """ Scans the entire document for URLs and applies the link tag """
+        self.text_area.tag_remove("link", "1.0", "end")
+        content = self.text_area.get("1.0", "end")
+        # Regex for common URLs
+        url_pattern = r'(https?://[^\s]+|www\.[^\s]+)'
+        for match in re.finditer(url_pattern, content):
+            start = f"1.0 + {match.start()} chars"
+            end = f"1.0 + {match.end()} chars"
+            self.text_area.tag_add("link", start, end)
+
+    def open_link(self, event):
+        """ Detects which link was clicked and opens it """
+        click_pos = self.text_area.index(f"@{event.x},{event.y}")
+        tags = self.text_area.tag_names(click_pos)
+        if "link" in tags:
+            # Find the boundaries of this specific link tag
+            ranges = self.text_area.tag_prevrange("link", click_pos + "+1c")
+            if ranges:
+                url = self.text_area.get(*ranges)
+                if url.startswith("www."):
+                    url = "http://" + url
+                webbrowser.open(url)
+
+    def handle_space(self, event):
+        """ Handles Bullets and Link scanning on space """
         cursor_idx = self.text_area.index("insert")
         line_start = self.text_area.index("insert linestart")
         line_content = self.text_area.get(line_start, cursor_idx)
 
-        # Convert '* ' to bullet
+        # Bullet check
         if line_content == "* ":
             self.text_area.delete(line_start, cursor_idx)
             self.text_area.insert(line_start, "• ")
 
-        # '1. ' is handled by handle_enter for continuation logic
+        # Link check
+        self.scan_for_links()
 
     def handle_enter(self, event):
-        """ Triggered when Enter is pressed to continue or end lists """
+        """ Handles auto-incrementing lists and Link scanning on Enter """
         cursor_idx = self.text_area.index("insert")
         line_start = self.text_area.index("insert linestart")
         line_content = self.text_area.get(line_start, cursor_idx).strip()
 
         # Handle Bullets (•)
         if line_content == "•":
-            # Pressed enter on empty bullet -> Clear bullet and end list
             self.text_area.delete(line_start, cursor_idx)
             self.text_area.insert(line_start, "\n")
+            self.scan_for_links()
             return "break"
         elif line_content.startswith("•"):
-            # Continue bullet list
             self.text_area.insert("insert", "\n• ")
+            self.scan_for_links()
             return "break"
 
         # Handle Numbering (1. )
@@ -95,14 +129,18 @@ class NoteDialog(tk.Toplevel):
             prefix = parts[0]
             if prefix.isdigit():
                 num = int(prefix)
-                # If line is just "1." and enter is pressed -> Clear and end list
                 if len(line_content.replace(f"{num}.", "").strip()) == 0:
                     self.text_area.delete(line_start, cursor_idx)
                     self.text_area.insert(line_start, "\n")
                 else:
-                    # Increment number
                     self.text_area.insert("insert", f"\n{num + 1}. ")
+                self.scan_for_links()
                 return "break"
+
+        # Default Enter behavior + scan
+        self.text_area.insert("insert", "\n")
+        self.scan_for_links()
+        return "break"
 
     def save_and_close(self):
         self.result = {
@@ -415,7 +453,7 @@ class MindMapApp:
         self.redraw()
 
     def show_help(self):
-        h = "Mind Map Pro Help:\n- RESOURCES: URLs, Files, Notes.\n- KEYBOARD: Ctrl+B (Bold), * (Bullet), 1. (Numbered).\n- ENTER: Auto-continues lists."
+        h = "Mind Map Pro Help:\n- RESOURCES: URLs, Files, Notes.\n- KEYBOARD: Ctrl+B (Bold), * (Bullet), 1. (Numbered).\n- LINKS: Typing URLs auto-highlights them; click to open."
         messagebox.showinfo("Help", h)
 
     def load_settings(self):
