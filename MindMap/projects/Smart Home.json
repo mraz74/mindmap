@@ -4,13 +4,14 @@
     "children": [
       "node_1",
       "node_2",
-      "n_8_c13d"
+      "n_8_c13d",
+      "n_9_dcdc"
     ],
     "content": {},
     "expanded": true,
     "pos": [
       0,
-      160.0
+      200.0
     ],
     "links": []
   },
@@ -114,5 +115,34 @@
     ],
     "expanded": true,
     "links": []
+  },
+  "n_9_dcdc": {
+    "text": "Camera",
+    "children": [
+      "n_10_345d"
+    ],
+    "pos": [
+      220,
+      400.0
+    ],
+    "expanded": true,
+    "links": []
+  },
+  "n_10_345d": {
+    "text": "C660",
+    "children": [],
+    "pos": [
+      440,
+      400
+    ],
+    "expanded": true,
+    "links": [
+      {
+        "type": "note",
+        "title": "C660 Kit Notes",
+        "content": "Solar-Powered Pan/Tilt Security Camera Kit\nhttps://www.tp-link.com/sa/home-networking/cloud-camera/tapo-c660-kit/\n\n"
+      },
+      "https://www.tp-link.com/sa/home-networking/cloud-camera/tapo-c660-kit/"
+    ]
   }
 }
