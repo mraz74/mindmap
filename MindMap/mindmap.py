@@ -1,10 +1,8 @@
 import tkinter as tk
-from tkinter import simpledialog, messagebox, Menu, filedialog, ttk, colorchooser
+from tkinter import simpledialog, messagebox, Menu, filedialog, ttk
 import json
 import os
 import webbrowser
-import platform
-import subprocess
 import re
 
 
@@ -29,8 +27,7 @@ class NoteDialog(tk.Toplevel):
 
         # Main Text Box
         tk.Label(self, text="Content (Ctrl+B: Bold | *: Bullet | 1.: Numbering | Links auto-detected):",
-                 font=("Segoe UI", 8, "italic"),
-                 fg="#7f8c8d").pack(anchor="w", padx=15)
+                 font=("Segoe UI", 8, "italic"), fg="#7f8c8d").pack(anchor="w", padx=15)
         self.text_area = tk.Text(self, font=("Segoe UI", 11), undo=True, wrap="word", padx=10, pady=10)
         self.text_area.pack(fill="both", expand=True, padx=15, pady=5)
 
@@ -38,19 +35,17 @@ class NoteDialog(tk.Toplevel):
         self.text_area.tag_configure("bold", font=("Segoe UI", 11, "bold"))
         self.text_area.tag_configure("link", foreground="blue", underline=True)
 
-        # Bindings for link interaction
+        # Bindings
         self.text_area.tag_bind("link", "<Button-1>", self.open_link)
         self.text_area.tag_bind("link", "<Enter>", lambda e: self.text_area.config(cursor="hand2"))
         self.text_area.tag_bind("link", "<Leave>", lambda e: self.text_area.config(cursor=""))
+        self.text_area.bind("<Control-b>", self.toggle_bold)
+        self.text_area.bind("<KeyRelease-space>", self.handle_space)
+        self.text_area.bind("<Return>", self.handle_enter)
 
         if initial_data:
             self.text_area.insert("1.0", initial_data.get("content", ""))
             self.scan_for_links()
-
-        # Bindings for formatting
-        self.text_area.bind("<Control-b>", self.toggle_bold)
-        self.text_area.bind("<KeyRelease-space>", self.handle_space)
-        self.text_area.bind("<Return>", self.handle_enter)
 
         # Save Button
         tk.Button(self, text="Save Note", bg="#2ecc71", fg="white", font=("Segoe UI", 10, "bold"),
@@ -69,50 +64,35 @@ class NoteDialog(tk.Toplevel):
             pass
 
     def scan_for_links(self):
-        """ Scans the entire document for URLs and applies the link tag """
         self.text_area.tag_remove("link", "1.0", "end")
         content = self.text_area.get("1.0", "end")
-        # Regex for common URLs
         url_pattern = r'(https?://[^\s]+|www\.[^\s]+)'
         for match in re.finditer(url_pattern, content):
-            start = f"1.0 + {match.start()} chars"
-            end = f"1.0 + {match.end()} chars"
-            self.text_area.tag_add("link", start, end)
+            self.text_area.tag_add("link", f"1.0 + {match.start()} chars", f"1.0 + {match.end()} chars")
 
     def open_link(self, event):
-        """ Detects which link was clicked and opens it """
         click_pos = self.text_area.index(f"@{event.x},{event.y}")
-        tags = self.text_area.tag_names(click_pos)
-        if "link" in tags:
-            # Find the boundaries of this specific link tag
+        if "link" in self.text_area.tag_names(click_pos):
             ranges = self.text_area.tag_prevrange("link", click_pos + "+1c")
             if ranges:
                 url = self.text_area.get(*ranges)
-                if url.startswith("www."):
-                    url = "http://" + url
+                if url.startswith("www."): url = "http://" + url
                 webbrowser.open(url)
 
     def handle_space(self, event):
-        """ Handles Bullets and Link scanning on space """
         cursor_idx = self.text_area.index("insert")
         line_start = self.text_area.index("insert linestart")
         line_content = self.text_area.get(line_start, cursor_idx)
-
-        # Bullet check
         if line_content == "* ":
             self.text_area.delete(line_start, cursor_idx)
             self.text_area.insert(line_start, "• ")
-
-        # Link check
         self.scan_for_links()
 
     def handle_enter(self, event):
-        """ Handles auto-incrementing lists and Link scanning on Enter """
         cursor_idx = self.text_area.index("insert")
         line_start = self.text_area.index("insert linestart")
         line_content = self.text_area.get(line_start, cursor_idx).strip()
 
-        # Handle Bullets (•)
         if line_content == "•":
             self.text_area.delete(line_start, cursor_idx)
             self.text_area.insert(line_start, "\n")
@@ -123,12 +103,10 @@ class NoteDialog(tk.Toplevel):
             self.scan_for_links()
             return "break"
 
-        # Handle Numbering (1. )
         if ". " in line_content or (line_content.endswith(".") and line_content[:-1].isdigit()):
             parts = line_content.split(". ", 1)
-            prefix = parts[0]
-            if prefix.isdigit():
-                num = int(prefix)
+            if parts[0].isdigit():
+                num = int(parts[0])
                 if len(line_content.replace(f"{num}.", "").strip()) == 0:
                     self.text_area.delete(line_start, cursor_idx)
                     self.text_area.insert(line_start, "\n")
@@ -137,7 +115,6 @@ class NoteDialog(tk.Toplevel):
                 self.scan_for_links()
                 return "break"
 
-        # Default Enter behavior + scan
         self.text_area.insert("insert", "\n")
         self.scan_for_links()
         return "break"
@@ -156,26 +133,22 @@ class NodeTooltip:
     def __init__(self, canvas):
         self.canvas = canvas
         self.tip_window = None
-        self.id = None
 
     def show(self, text, x, y):
-        if self.tip_window or not text:
-            return
-        x += 20
+        if self.tip_window or not text: return
+        x += 20;
         y += 20
         self.tip_window = tw = tk.Toplevel(self.canvas)
         tw.wm_overrideredirect(True)
         tw.wm_geometry(f"+{int(x)}+{int(y)}")
         tw.attributes("-topmost", True)
-        label = tk.Label(tw, text=text, justify="left",
-                         background="#2c3e50", foreground="white", relief="flat", borderwidth=1,
-                         font=("Segoe UI", 9), padx=8, pady=5)
-        label.pack()
+        tk.Label(tw, text=text, justify="left", background="#2c3e50", foreground="white",
+                 relief="flat", borderwidth=1, font=("Segoe UI", 9), padx=8, pady=5).pack()
 
     def hide(self):
-        tw = self.tip_window
-        self.tip_window = None
-        if tw: tw.destroy()
+        if self.tip_window:
+            self.tip_window.destroy()
+            self.tip_window = None
 
 
 class MindMapApp:
@@ -188,6 +161,7 @@ class MindMapApp:
         self.settings_path = os.path.join(self.projects_dir, "settings.json")
 
         self.settings = self.load_settings()
+        # [User Info]: Always open the last open project
         self.current_project = self.settings.get("last_project", "central.json")
 
         self.root.geometry("1400x900")
@@ -214,7 +188,6 @@ class MindMapApp:
 
         tk.Button(self.toolbar, text="Reorganize Map", command=self.reorganize_and_zoom, bg="#c8e6c9",
                   font=("Segoe UI", 9, "bold")).pack(side="left", padx=5, pady=3)
-
         tk.Button(self.toolbar, text="Zoom All", command=self.zoom_all, bg="#d1d8ff",
                   font=("Segoe UI", 9, "bold")).pack(side="left", padx=5, pady=3)
         tk.Button(self.toolbar, text="Expand All", command=self.expand_all).pack(side="left", padx=5, pady=3)
@@ -257,12 +230,12 @@ class MindMapApp:
         self.root.after(500, self.reorganize_and_zoom)
 
     def on_mouse_move(self, e):
-        nid = self.find_node_at(e.x, e.y)
+        nid = self.find_node_at(e.x, e.y, exclude=self.dragging)  # Don't hover self while dragging
         if nid != self.last_hover_node:
             self.cancel_hover()
             self.tooltip.hide()
             self.last_hover_node = nid
-            if nid:
+            if nid and not self.dragging:
                 self.hover_after_id = self.root.after(750, lambda: self.show_node_details(nid, e.x_root, e.y_root))
 
     def cancel_hover(self):
@@ -313,6 +286,7 @@ class MindMapApp:
         if clicked_node:
             nx, ny = self.nodes[clicked_node]["pos"]
             px = 75
+            # Check if "+" icon was clicked
             if (nx + px - 15) < wx < (nx + px + 15) and (ny - 15) < wy < (ny + 15):
                 self.selected = clicked_node
                 self.add_branch()
@@ -333,7 +307,10 @@ class MindMapApp:
         self.tooltip.hide()
         if self.dragging:
             self.nodes[self.dragging]["pos"] = self.to_world(e.x, e.y)
-            target = self.find_node_at(e.x, e.y)
+            # CRITICAL FIX: Pass 'exclude=self.dragging' so we find the node UNDER the one we are dragging
+            target = self.find_node_at(e.x, e.y, exclude=self.dragging)
+
+            # Ensure we don't drop on ourselves or our own children
             if target and target != self.dragging and not self.is_descendant(self.dragging, target):
                 self.drop_target = target
             else:
@@ -348,15 +325,21 @@ class MindMapApp:
     def on_release(self, e):
         if self.dragging:
             if self.drop_target and self.dragging != self.root_id:
+                # Remove from old parent
                 for pid, node in self.nodes.items():
                     if self.dragging in node["children"]:
                         node["children"].remove(self.dragging)
                         break
+                # Attach to new parent
                 self.nodes[self.drop_target]["children"].append(self.dragging)
                 self.reorganize_and_zoom()
+            else:
+                # If no target, snap back to organized position
+                self.reorganize_nodes()
+
             self.save_project()
-            self.dragging = None;
-            self.drop_target = None;
+            self.dragging = None
+            self.drop_target = None
             self.redraw()
         if self.drag_box_start:
             x0, y0 = self.drag_box_start
@@ -409,8 +392,10 @@ class MindMapApp:
                         draw_tree(cid, depth + 1)
             px, py = 75 * self.zoom_level, 20 * self.zoom_level
             color = ["#4834d4", "#686de0", "#eb4d4b", "#6ab04c"][depth % 4]
+            # Use dashed outline or highlight during drag-drop target
             bw = 4 if nid == self.drop_target else max(1, int(2 * self.zoom_level))
             dash = (5, 5) if nid == self.drop_target else None
+
             self.canvas.create_rectangle(sx - px, sy - py, sx + px, sy + py, fill="white", outline=color, width=bw,
                                          dash=dash)
             self.canvas.create_text(sx, sy, text=node["text"],
@@ -443,6 +428,7 @@ class MindMapApp:
                 for cid in self.nodes[nid]["children"]: col(cid)
 
         col(self.root_id)
+        if not v: return
         ax = [p[0] for p in v];
         ay = [p[1] for p in v]
         min_wx, max_wx, min_wy, max_wy = min(ax) - 100, max(ax) + 100, min(ay) - 60, max(ay) + 60
@@ -453,7 +439,8 @@ class MindMapApp:
         self.redraw()
 
     def show_help(self):
-        h = "Mind Map Pro Help:\n- RESOURCES: URLs, Files, Notes.\n- KEYBOARD: Ctrl+B (Bold), * (Bullet), 1. (Numbered).\n- LINKS: Typing URLs auto-highlights them; click to open."
+        # [User Info]: Help updated with relevant code changes
+        h = "Mind Map Pro Help:\n\n- DRAG & DROP: Drag a node onto another to re-parent it.\n- RESOURCES: Right-click > Resources (URLs, Files, Notes).\n- FORMATTING: In Notes, use Ctrl+B (Bold), * (Bullet), 1. (Numbered).\n- LINKS: Typing URLs auto-highlights them; click to open."
         messagebox.showinfo("Help", h)
 
     def load_settings(self):
@@ -521,11 +508,13 @@ class MindMapApp:
             self.nodes = {
                 self.root_id: {"text": "Central Idea", "children": [], "pos": (0, 0), "expanded": True, "links": []}}
 
-    def find_node_at(self, x, y):
+    def find_node_at(self, x, y, exclude=None):
         wx, wy = self.to_world(x, y)
         for nid, node in self.nodes.items():
+            if nid == exclude: continue  # Skip the node being dragged
             nx, ny = node["pos"]
-            if nx - 75 < wx < nx + 85 and ny - 25 < wy < ny + 25: return nid
+            # Increased detection box for easier dropping (90x35)
+            if nx - 90 < wx < nx + 90 and ny - 35 < wy < ny + 35: return nid
         return None
 
     def on_right_press(self, e):
