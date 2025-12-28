@@ -3,13 +3,13 @@
     "text": "Smart Home",
     "children": [
       "node_1",
-      "n_9_6163"
+      "n_8_c13d"
     ],
     "content": {},
     "expanded": true,
     "pos": [
-      600,
-      400
+      0,
+      240.0
     ],
     "links": []
   },
@@ -22,8 +22,8 @@
     "content": {},
     "expanded": true,
     "pos": [
-      793.7694704049844,
-      315.60767133956386
+      220,
+      160.0
     ],
     "links": []
   },
@@ -37,8 +37,8 @@
     "content": {},
     "expanded": true,
     "pos": [
-      1068.03738317757,
-      349.3457943925234
+      440,
+      80.0
     ],
     "links": []
   },
@@ -48,8 +48,8 @@
     "content": {},
     "expanded": true,
     "pos": [
-      1020,
-      400.0
+      440,
+      240
     ],
     "links": [
       "https://us.store.tp-link.com/checkouts/cn/hWN6pqOoiX62ftVkIOm10OdX/en-us?_r=AQABEit0KAXUR5DR9lP912iUY8OvTtpzDSMALASGu5j8D0s&auto_redirect=false&company_location_id=&edge_redirect=true&locale=en-US&skip_shop_pay=true"
@@ -61,10 +61,10 @@
       "n_8_6f05"
     ],
     "content": {},
-    "expanded": false,
+    "expanded": true,
     "pos": [
-      1320,
-      280.0
+      660,
+      0.0
     ],
     "links": []
   },
@@ -74,8 +74,8 @@
     "content": {},
     "expanded": true,
     "pos": [
-      1310.25,
-      460.12500000000006
+      660,
+      80
     ],
     "links": []
   },
@@ -85,8 +85,8 @@
     "content": {},
     "expanded": true,
     "pos": [
-      1320,
-      400.0
+      660,
+      160
     ],
     "links": []
   },
@@ -94,18 +94,18 @@
     "text": "T1",
     "children": [],
     "pos": [
-      1520,
-      280.0
+      880,
+      0
     ],
     "expanded": true,
     "links": []
   },
-  "n_9_6163": {
+  "n_8_c13d": {
     "text": "DoorBell",
     "children": [],
     "pos": [
-      800,
-      400
+      220,
+      320
     ],
     "expanded": true,
     "links": []

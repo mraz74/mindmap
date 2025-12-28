@@ -40,6 +40,11 @@ class MindMapApp:
         # --- TOOLBAR ---
         self.toolbar = tk.Frame(self.root, bg="#f5f5f7")
         self.toolbar.pack(fill="x", side="top")
+
+        # ADDED REORGANIZE BUTTON
+        tk.Button(self.toolbar, text="Reorganize Map", command=self.reorganize_and_zoom, bg="#c8e6c9",
+                  font=("Segoe UI", 9, "bold")).pack(side="left", padx=5, pady=3)
+
         tk.Button(self.toolbar, text="Zoom All", command=self.zoom_all, bg="#d1d8ff",
                   font=("Segoe UI", 9, "bold")).pack(side="left", padx=5, pady=3)
         tk.Button(self.toolbar, text="Expand All", command=self.expand_all).pack(side="left", padx=5, pady=3)
@@ -73,23 +78,56 @@ class MindMapApp:
         self.canvas.bind("<Double-Button-1>", self.on_double_click)
 
         self.load_project()
-        self.root.after(500, self.zoom_all)
+        self.root.after(500, self.reorganize_and_zoom)
 
-    # --- UPDATED CLICK LOGIC TO DETECT "+" ICON ---
+    # --- AUTO-LAYOUT LOGIC ---
+    def reorganize_nodes(self):
+        """Calculates optimal tree positions recursively."""
+        if not self.nodes: return
+
+        self.next_y = 0
+        v_gap = 80  # Vertical space between nodes
+        h_gap = 220  # Horizontal space between levels
+
+        def layout_recursive(nid, depth):
+            node = self.nodes[nid]
+            x_pos = depth * h_gap
+
+            # If node is leaf or collapsed, it takes up one 'slot' of Y space
+            if not node.get("expanded", True) or not node["children"]:
+                y_pos = self.next_y
+                node["pos"] = [x_pos, y_pos]
+                self.next_y += v_gap
+                return y_pos
+            else:
+                # Parent node: Layout all children first
+                child_ys = []
+                for cid in node["children"]:
+                    if cid in self.nodes:
+                        child_ys.append(layout_recursive(cid, depth + 1))
+
+                # Center the parent between its top and bottom child
+                actual_y = (child_ys[0] + child_ys[-1]) / 2
+                node["pos"] = [x_pos, actual_y]
+                return actual_y
+
+        layout_recursive(self.root_id, 0)
+        self.save_project()
+
+    def reorganize_and_zoom(self):
+        self.reorganize_nodes()
+        self.zoom_all()
+
     def on_left_click(self, e):
         wx, wy = self.to_world(e.x, e.y)
         clicked_node = self.find_node_at(e.x, e.y)
-
         if clicked_node:
-            # Check if clicked specifically on the "+" icon area
             nx, ny = self.nodes[clicked_node]["pos"]
-            px = 75  # half width
-            # Define hit area for "+" button (right center)
+            px = 75
             if (nx + px - 15) < wx < (nx + px + 15) and (ny - 15) < wy < (ny + 15):
                 self.selected = clicked_node
                 self.add_branch()
                 return
-
             self.selected = clicked_node
             self.dragging = self.selected
         else:
@@ -115,7 +153,6 @@ class MindMapApp:
                     self.box_zoom(x0, y0, e.x, e.y)
             self.drag_box_start = None
             self.redraw()
-
         if self.dragging:
             self.save_project()
             self.dragging = None
@@ -155,37 +192,31 @@ class MindMapApp:
                 for cid in node["children"]:
                     if cid in self.nodes:
                         cx, cy = self.to_screen(*self.nodes[cid]["pos"])
+                        # Connection Arrows/Lines
                         self.canvas.create_line(sx, sy, (sx + cx) / 2, sy, (sx + cx) / 2, cy, cx, cy, smooth=True,
                                                 fill="#dcdde1", width=max(1, int(2 * self.zoom_level)))
                         draw_tree(cid, depth + 1)
 
             px, py = 75 * self.zoom_level, 20 * self.zoom_level
             color = ["#4834d4", "#686de0", "#eb4d4b", "#6ab04c"][depth % 4]
-
-            # Main Node Box
             self.canvas.create_rectangle(sx - px, sy - py, sx + px, sy + py, fill="white", outline=color,
                                          width=max(1, int(2 * self.zoom_level)))
-
-            # Node Text
             self.canvas.create_text(sx, sy, text=node["text"],
                                     font=("Segoe UI", max(5, int(10 * self.zoom_level)), "bold"))
 
-            # --- ADD CHILD ICON (+) on right center edge ---
+            # Plus icon
             btn_r = 8 * self.zoom_level
             self.canvas.create_oval(sx + px - btn_r, sy - btn_r, sx + px + btn_r, sy + btn_r,
                                     fill="white", outline=color, width=1)
             self.canvas.create_text(sx + px, sy, text="+", fill=color,
                                     font=("Segoe UI", max(6, int(9 * self.zoom_level)), "bold"))
 
-            # Collapsed state indicator
             if not node.get("expanded", True) and node["children"]:
                 self.canvas.create_text(sx + px - 12, sy + py - 8, text=f"({len(node['children'])})",
                                         font=("Segoe UI", max(5, int(7 * self.zoom_level))), fill="#636e72")
 
-            # Link icon
             if node.get("links"):
-                self.canvas.create_text(sx - px + 12, sy, text="🔗",
-                                        font=("Segoe UI", max(5, int(8 * self.zoom_level))))
+                self.canvas.create_text(sx - px + 12, sy, text="🔗", font=("Segoe UI", max(5, int(8 * self.zoom_level))))
 
         if self.nodes: draw_tree(self.root_id)
 
@@ -217,15 +248,11 @@ class MindMapApp:
         self.redraw()
 
     def show_help(self):
-        h = ("NEW: Quick Branching\n"
-             "- Click the '+' icon on the right edge of any node to add a child instantly.\n\n"
-             "DIRECTIONAL ZOOM GESTURES:\n"
-             "- 🟦 Top-Left to Bottom-Right: Zoom into area.\n"
-             "- 🟩 Bottom-Right to Top-Left: Reset view.\n\n"
-             "OTHER CONTROLS:\n"
-             "- Mouse Wheel: Zoom.\n"
+        h = ("NEW: Reorganize Button\n"
+             "- Click 'Reorganize Map' to auto-align all branches into an optimal tree layout.\n\n"
+             "- Click the '+' icon to add a child.\n"
              "- Right-Drag: Pan.\n"
-             "- Double-Click: Toggle branch or Manage links.")
+             "- Double-Click: Collapse/Expand or Edit.")
         messagebox.showinfo("Help", h)
 
     def load_settings(self):
@@ -252,10 +279,10 @@ class MindMapApp:
 
     def switch_project(self, filename):
         self.current_project = filename
-        self.load_project()
-        self.update_title()
-        self.update_recent_list(filename)
-        self.zoom_all()
+        self.load_project();
+        self.update_title();
+        self.update_recent_list(filename);
+        self.reorganize_and_zoom()
 
     def new_project(self):
         name = simpledialog.askstring("New", "Project Name:")
@@ -264,10 +291,10 @@ class MindMapApp:
             self.current_project = name
             self.nodes = {
                 self.root_id: {"text": "Central Idea", "children": [], "pos": (0, 0), "expanded": True, "links": []}}
-            self.save_project()
-            self.update_recent_list(name)
-            self.update_title()
-            self.zoom_all()
+            self.save_project();
+            self.update_recent_list(name);
+            self.update_title();
+            self.reorganize_and_zoom()
 
     def open_project(self):
         path = filedialog.askopenfilename(initialdir=self.projects_dir, filetypes=[("JSON", "*.json")])
@@ -277,8 +304,8 @@ class MindMapApp:
         path = filedialog.asksaveasfilename(initialdir=self.projects_dir, defaultextension=".json")
         if path:
             self.current_project = os.path.basename(path)
-            self.save_project()
-            self.update_recent_list(self.current_project)
+            self.save_project();
+            self.update_recent_list(self.current_project);
             self.update_title()
 
     def update_title(self):
@@ -301,7 +328,6 @@ class MindMapApp:
         wx, wy = self.to_world(x, y)
         for nid, node in self.nodes.items():
             nx, ny = node["pos"]
-            # Increased hit area slightly for the icon
             if nx - 75 < wx < nx + 85 and ny - 25 < wy < ny + 25: return nid
         return None
 
@@ -318,7 +344,7 @@ class MindMapApp:
             menu.add_command(label="Add Branch", command=self.add_branch)
             menu.add_command(label="Delete", command=self.delete_node, foreground="red")
         else:
-            menu.add_command(label="Zoom All", command=self.zoom_all)
+            menu.add_command(label="Reorganize & Zoom", command=self.reorganize_and_zoom)
         menu.post(event.x_root, event.y_root)
 
     def on_double_click(self, e):
@@ -328,7 +354,7 @@ class MindMapApp:
                 self.manage_resources(nid)
             elif self.nodes[nid]["children"]:
                 self.nodes[nid]["expanded"] = not self.nodes[nid].get("expanded", True)
-                self.zoom_all()
+                self.reorganize_and_zoom()
             else:
                 self.edit_node_text(nid)
 
@@ -337,16 +363,15 @@ class MindMapApp:
         manager = tk.Toplevel(self.root)
         manager.title(f"Resources: {node['text']}")
         manager.geometry("650x450")
-        manager.transient(self.root)
-        f = tk.Frame(manager)
+        f = tk.Frame(manager);
         f.pack(fill="both", expand=True, padx=10, pady=10)
         tree = ttk.Treeview(f, columns=("Type", "Path"), show="headings")
-        tree.heading("Type", text="Type")
+        tree.heading("Type", text="Type");
         tree.heading("Path", text="Path / URL")
-        tree.column("Type", width=70, anchor="center")
+        tree.column("Type", width=70, anchor="center");
         tree.column("Path", width=480)
         tree.pack(side="left", fill="both", expand=True)
-        vs = tk.Scrollbar(f, command=tree.yview)
+        vs = tk.Scrollbar(f, command=tree.yview);
         vs.pack(side="right", fill="y")
         tree.config(yscrollcommand=vs.set)
 
@@ -361,7 +386,7 @@ class MindMapApp:
             if sel: webbrowser.open(tree.item(sel[0])['values'][1])
 
         tree.bind("<Double-1>", open_selected)
-        btn_f = tk.Frame(manager)
+        btn_f = tk.Frame(manager);
         btn_f.pack(fill="x", pady=10, padx=10)
         tk.Button(btn_f, text="+ Add URL",
                   command=lambda: [node.setdefault("links", []).append(simpledialog.askstring("URL", "Address:")),
@@ -369,11 +394,7 @@ class MindMapApp:
         tk.Button(btn_f, text="+ Add File",
                   command=lambda: [node.setdefault("links", []).append(filedialog.askopenfilename()), refresh(),
                                    self.save_project(), self.redraw()]).pack(side="left", padx=2)
-        tk.Button(btn_f, text="Open", command=open_selected, bg="#e1f5fe").pack(side="left", padx=2)
-        bottom_f = tk.Frame(manager)
-        bottom_f.pack(fill="x", side="bottom", pady=10, padx=10)
-        tk.Button(bottom_f, text="Close", width=10, command=manager.destroy).pack(side="right")
-        tk.Button(bottom_f, text="Delete Selected", fg="red",
+        tk.Button(btn_f, text="Delete Selected", fg="red",
                   command=lambda: [node["links"].remove(tree.item(tree.selection()[0])['values'][1]), refresh(),
                                    self.save_project(), self.redraw()] if tree.selection() else None).pack(side="left")
         refresh()
@@ -381,8 +402,8 @@ class MindMapApp:
     def edit_node_text(self, nid):
         new = simpledialog.askstring("Edit", "Text:", initialvalue=self.nodes[nid]["text"])
         if new:
-            self.nodes[nid]["text"] = new
-            self.save_project()
+            self.nodes[nid]["text"] = new;
+            self.save_project();
             self.redraw()
 
     def add_branch(self):
@@ -390,28 +411,25 @@ class MindMapApp:
         name = simpledialog.askstring("New", "Name:")
         if name:
             cid = f"n_{len(self.nodes)}_{os.urandom(2).hex()}"
-            px, py = self.nodes[self.selected]["pos"]
-            self.nodes[cid] = {"text": name, "children": [], "pos": (px + 200, py), "expanded": True, "links": []}
+            self.nodes[cid] = {"text": name, "children": [], "pos": [0, 0], "expanded": True, "links": []}
             self.nodes[self.selected]["children"].append(cid)
-            self.save_project()
-            self.redraw()
+            self.reorganize_and_zoom()
 
     def delete_node(self):
         if self.selected != self.root_id:
             for n in self.nodes.values():
                 if self.selected in n["children"]: n["children"].remove(self.selected)
-            del self.nodes[self.selected]
-            self.save_project()
-            self.redraw()
+            del self.nodes[self.selected];
+            self.reorganize_and_zoom()
 
     def expand_all(self):
         for n in self.nodes.values(): n["expanded"] = True
-        self.zoom_all()
+        self.reorganize_and_zoom()
 
     def collapse_all(self):
         for nid, n in self.nodes.items():
             if nid != self.root_id: n["expanded"] = False
-        self.zoom_all()
+        self.reorganize_and_zoom()
 
 
 if __name__ == "__main__":
