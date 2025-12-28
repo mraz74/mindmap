@@ -1,5 +1,5 @@
 import tkinter as tk
-from tkinter import simpledialog, messagebox, Menu, filedialog, ttk
+from tkinter import simpledialog, messagebox, Menu, filedialog, ttk, colorchooser
 import json
 import os
 import webbrowser
@@ -7,7 +7,80 @@ import platform
 import subprocess
 
 
-# --- NEW TOOLTIP CLASS ---
+# --- NOTE DIALOG CLASS ---
+class NoteDialog(tk.Toplevel):
+    def __init__(self, parent, initial_data=None):
+        super().__init__(parent)
+        self.title("Note Editor")
+        self.geometry("500x500")
+        self.result = None
+
+        # Make this window modal
+        self.transient(parent)
+        self.grab_set()
+
+        # FIX: Ensure closing the window via the "X" button also saves the data
+        self.protocol("WM_DELETE_WINDOW", self.save_and_close)
+
+        # Toolbar
+        self.toolbar = tk.Frame(self, bg="#f0f0f0")
+        self.toolbar.pack(side="top", fill="x")
+
+        tk.Button(self.toolbar, text="B", font=("Segoe UI", 9, "bold"), width=3,
+                  command=self.toggle_bold).pack(side="left", padx=2, pady=2)
+        tk.Button(self.toolbar, text="Color", command=self.choose_color).pack(side="left", padx=2)
+        tk.Button(self.toolbar, text="• List", command=self.add_bullet).pack(side="left", padx=2)
+
+        tk.Label(self, text="Title:").pack(anchor="w", padx=10, pady=(10, 0))
+        self.title_var = tk.StringVar(value=initial_data.get("title", "New Note") if initial_data else "New Note")
+        tk.Entry(self, textvariable=self.title_var, font=("Segoe UI", 11)).pack(fill="x", padx=10, pady=5)
+
+        tk.Label(self, text="Note content:").pack(anchor="w", padx=10)
+        self.text_area = tk.Text(self, font=("Segoe UI", 10), undo=True)
+        self.text_area.pack(fill="both", expand=True, padx=10, pady=5)
+
+        if initial_data:
+            self.text_area.insert("1.0", initial_data.get("content", ""))
+
+        # Save Button
+        tk.Button(self, text="Save Note", bg="#2ecc71", fg="white", font=("Segoe UI", 10, "bold"),
+                  command=self.save_and_close).pack(pady=10)
+
+    def toggle_bold(self):
+        try:
+            self.text_area.tag_configure("bold", font=("Segoe UI", 10, "bold"))
+            current_tags = self.text_area.tag_names("sel.first")
+            if "bold" in current_tags:
+                self.text_area.tag_remove("bold", "sel.first", "sel.last")
+            else:
+                self.text_area.tag_add("bold", "sel.first", "sel.last")
+        except tk.TclError:
+            pass
+
+    def choose_color(self):
+        color = colorchooser.askcolor()[1]
+        if color:
+            tag_name = f"color_{color}"
+            self.text_area.tag_configure(tag_name, foreground=color)
+            try:
+                self.text_area.tag_add(tag_name, "sel.first", "sel.last")
+            except tk.TclError:
+                pass
+
+    def add_bullet(self):
+        self.text_area.insert("insert", "\n• ")
+
+    def save_and_close(self):
+        # Captures the data into the result variable before destruction
+        self.result = {
+            "type": "note",
+            "title": self.title_var.get().strip() or "Untitled Note",
+            "content": self.text_area.get("1.0", "end-1c")
+        }
+        self.destroy()
+
+
+# --- TOOLTIP CLASS ---
 class NodeTooltip:
     def __init__(self, canvas):
         self.canvas = canvas
@@ -17,14 +90,12 @@ class NodeTooltip:
     def show(self, text, x, y):
         if self.tip_window or not text:
             return
-        # Offset tooltip from cursor
         x += 20
         y += 20
         self.tip_window = tw = tk.Toplevel(self.canvas)
-        tw.wm_overrideredirect(True)  # Remove window borders
+        tw.wm_overrideredirect(True)
         tw.wm_geometry(f"+{int(x)}+{int(y)}")
         tw.attributes("-topmost", True)
-
         label = tk.Label(tw, text=text, justify="left",
                          background="#2c3e50", foreground="white", relief="flat", borderwidth=1,
                          font=("Segoe UI", 9), padx=8, pady=5)
@@ -33,8 +104,7 @@ class NodeTooltip:
     def hide(self):
         tw = self.tip_window
         self.tip_window = None
-        if tw:
-            tw.destroy()
+        if tw: tw.destroy()
 
 
 class MindMapApp:
@@ -98,7 +168,6 @@ class MindMapApp:
         self.drag_box_start = None
         self.drop_target = None
 
-        # Hover logic variables
         self.tooltip = NodeTooltip(self.canvas)
         self.hover_after_id = None
         self.last_hover_node = None
@@ -111,7 +180,7 @@ class MindMapApp:
         self.canvas.bind("<B3-Motion>", self.do_pan)
         self.canvas.bind("<MouseWheel>", self.on_mouse_zoom)
         self.canvas.bind("<Double-Button-1>", self.on_double_click)
-        self.canvas.bind("<Motion>", self.on_mouse_move)  # Track hover
+        self.canvas.bind("<Motion>", self.on_mouse_move)
 
         self.load_project()
         self.root.after(500, self.reorganize_and_zoom)
@@ -119,15 +188,11 @@ class MindMapApp:
     # --- HOVER LOGIC ---
     def on_mouse_move(self, e):
         nid = self.find_node_at(e.x, e.y)
-
-        # If we moved to a new node (or empty space)
         if nid != self.last_hover_node:
             self.cancel_hover()
             self.tooltip.hide()
             self.last_hover_node = nid
-
             if nid:
-                # Start 750ms timer
                 self.hover_after_id = self.root.after(750, lambda: self.show_node_details(nid, e.x_root, e.y_root))
 
     def cancel_hover(self):
@@ -137,17 +202,13 @@ class MindMapApp:
 
     def show_node_details(self, nid, root_x, root_y):
         node = self.nodes[nid]
-        details = [f"Node: {node['text']}"]
-        details.append(f"Children: {len(node.get('children', []))}")
-
+        details = [f"Node: {node['text']}", f"Children: {len(node.get('children', []))}"]
         links = node.get("links", [])
         if links:
             details.append("\nResources:")
-            for l in links[:5]:  # Show first 5
-                details.append(f"• {os.path.basename(l)}")
-            if len(links) > 5:
-                details.append(f"...and {len(links) - 5} more")
-
+            for l in links[:5]:
+                name = l['title'] if isinstance(l, dict) else os.path.basename(str(l))
+                details.append(f"• {name}")
         self.tooltip.show("\n".join(details), root_x, root_y)
 
     # --- AUTO-LAYOUT LOGIC ---
@@ -164,11 +225,10 @@ class MindMapApp:
                 node["pos"] = [x_pos, y_pos]
                 self.next_y += v_gap
                 return y_pos
-            else:
-                child_ys = [layout_recursive(cid, depth + 1) for cid in node["children"] if cid in self.nodes]
-                actual_y = (child_ys[0] + child_ys[-1]) / 2 if child_ys else self.next_y
-                node["pos"] = [x_pos, actual_y]
-                return actual_y
+            child_ys = [layout_recursive(cid, depth + 1) for cid in node["children"] if cid in self.nodes]
+            actual_y = (child_ys[0] + child_ys[-1]) / 2 if child_ys else self.next_y
+            node["pos"] = [x_pos, actual_y]
+            return actual_y
 
         layout_recursive(self.root_id, 0)
         self.save_project()
@@ -226,22 +286,20 @@ class MindMapApp:
                 self.nodes[self.drop_target]["children"].append(self.dragging)
                 self.reorganize_and_zoom()
             self.save_project()
-            self.dragging = None
-            self.drop_target = None
+            self.dragging = None;
+            self.drop_target = None;
             self.redraw()
-
         if self.drag_box_start:
             x0, y0 = self.drag_box_start
             if e.x < x0 or e.y < y0:
                 if abs(e.x - x0) > 10: self.zoom_all()
-            else:
-                if abs(e.x - x0) > 10 and abs(e.y - y0) > 10:
-                    self.box_zoom(x0, y0, e.x, e.y)
-            self.drag_box_start = None
+            elif abs(e.x - x0) > 10 and abs(e.y - y0) > 10:
+                self.box_zoom(x0, y0, e.x, e.y)
+            self.drag_box_start = None;
             self.redraw()
 
     def box_zoom(self, x0, y0, x1, y1):
-        wx0, wy0 = self.to_world(x0, y0)
+        wx0, wy0 = self.to_world(x0, y0);
         wx1, wy1 = self.to_world(x1, y1)
         ww, wh = (wx1 - wx0), (wy1 - wy0)
         sw, sh = self.canvas.winfo_width(), self.canvas.winfo_height()
@@ -262,9 +320,9 @@ class MindMapApp:
 
     def do_pan(self, e):
         self.tooltip.hide()
-        self.offset_x += (e.x - self.pan_last_x)
+        self.offset_x += (e.x - self.pan_last_x);
         self.offset_y += (e.y - self.pan_last_y)
-        self.pan_last_x, self.pan_last_y = e.x, e.y
+        self.pan_last_x, self.pan_last_y = e.x, e.y;
         self.redraw()
 
     def redraw(self):
@@ -280,31 +338,21 @@ class MindMapApp:
                         self.canvas.create_line(sx, sy, (sx + cx) / 2, sy, (sx + cx) / 2, cy, cx, cy, smooth=True,
                                                 fill="#dcdde1", width=max(1, int(2 * self.zoom_level)))
                         draw_tree(cid, depth + 1)
-
             px, py = 75 * self.zoom_level, 20 * self.zoom_level
             color = ["#4834d4", "#686de0", "#eb4d4b", "#6ab04c"][depth % 4]
-
-            border_w = max(1, int(2 * self.zoom_level))
-            dash_pat = None
-            if nid == self.drop_target:
-                border_w = 4
-                dash_pat = (5, 5)
-
-            self.canvas.create_rectangle(sx - px, sy - py, sx + px, sy + py, fill="white", outline=color,
-                                         width=border_w, dash=dash_pat)
+            bw = 4 if nid == self.drop_target else max(1, int(2 * self.zoom_level))
+            dash = (5, 5) if nid == self.drop_target else None
+            self.canvas.create_rectangle(sx - px, sy - py, sx + px, sy + py, fill="white", outline=color, width=bw,
+                                         dash=dash)
             self.canvas.create_text(sx, sy, text=node["text"],
                                     font=("Segoe UI", max(5, int(10 * self.zoom_level)), "bold"))
-
-            btn_r = 8 * self.zoom_level
-            self.canvas.create_oval(sx + px - btn_r, sy - btn_r, sx + px + btn_r, sy + btn_r,
-                                    fill="white", outline=color, width=1)
+            br = 8 * self.zoom_level
+            self.canvas.create_oval(sx + px - br, sy - br, sx + px + br, sy + br, fill="white", outline=color)
             self.canvas.create_text(sx + px, sy, text="+", fill=color,
                                     font=("Segoe UI", max(6, int(9 * self.zoom_level)), "bold"))
-
             if not node.get("expanded", True) and node["children"]:
                 self.canvas.create_text(sx + px - 12, sy + py - 8, text=f"({len(node['children'])})",
                                         font=("Segoe UI", max(5, int(7 * self.zoom_level))), fill="#636e72")
-
             if node.get("links"):
                 self.canvas.create_text(sx - px + 12, sy, text="🔗", font=("Segoe UI", max(5, int(8 * self.zoom_level))))
 
@@ -318,19 +366,17 @@ class MindMapApp:
 
     def zoom_all(self):
         if not self.nodes: return
-        v_coords = []
+        v = []
 
-        def collect_v(nid):
-            v_coords.append(self.nodes[nid]["pos"])
+        def col(nid):
+            v.append(self.nodes[nid]["pos"])
             if self.nodes[nid].get("expanded", True):
-                for cid in self.nodes[nid]["children"]:
-                    if cid in self.nodes: collect_v(cid)
+                for cid in self.nodes[nid]["children"]: col(cid)
 
-        collect_v(self.root_id)
-        all_x = [p[0] for p in v_coords];
-        all_y = [p[1] for p in v_coords]
-        min_wx, max_wx = min(all_x) - 100, max(all_x) + 100
-        min_wy, max_wy = min(all_y) - 60, max(all_y) + 60
+        col(self.root_id)
+        ax = [p[0] for p in v];
+        ay = [p[1] for p in v]
+        min_wx, max_wx, min_wy, max_wy = min(ax) - 100, max(ax) + 100, min(ay) - 60, max(ay) + 60
         sw, sh = max(self.canvas.winfo_width(), 100), max(self.canvas.winfo_height(), 100)
         self.zoom_level = min(sw / max(max_wx - min_wx, 1), sh / max(max_wy - min_wy, 1), 1.5)
         self.offset_x = (sw / 2) - ((min_wx + max_wx) / 2) * self.zoom_level
@@ -338,10 +384,7 @@ class MindMapApp:
         self.redraw()
 
     def show_help(self):
-        h = ("Mind Map Pro Help:\n"
-             "- HOVER: Hold mouse over a node for 750ms to see details.\n"
-             "- DRAG & DROP: Move any node onto another to re-parent.\n"
-             "- REORGANIZE: Click to auto-align tree layout.")
+        h = "Mind Map Pro Help:\n- RESOURCES: Add URLs, Files, or Rich Text Notes.\n- HOVER: See resource details.\n- DRAG: Re-parent nodes."
         messagebox.showinfo("Help", h)
 
     def load_settings(self):
@@ -353,18 +396,17 @@ class MindMapApp:
         with open(self.settings_path, "w") as f: json.dump(self.settings, f, indent=2)
 
     def update_recent_list(self, filename):
-        recents = self.settings.get("recent", [])
-        if filename in recents: recents.remove(filename)
-        recents.insert(0, filename)
-        self.settings["recent"] = recents[:5]
-        self.settings["last_project"] = filename
+        r = self.settings.get("recent", [])
+        if filename in r: r.remove(filename)
+        r.insert(0, filename)
+        self.settings["recent"], self.settings["last_project"] = r[:5], filename
         self.save_settings();
         self.update_recent_menu()
 
     def update_recent_menu(self):
         self.recent_menu.delete(0, "end")
-        for file in self.settings.get("recent", []):
-            self.recent_menu.add_command(label=file, command=lambda f=file: self.switch_project(f))
+        for f in self.settings.get("recent", []):
+            self.recent_menu.add_command(label=f, command=lambda f=f: self.switch_project(f))
 
     def switch_project(self, filename):
         self.current_project = filename
@@ -391,11 +433,8 @@ class MindMapApp:
 
     def save_as_project(self):
         path = filedialog.asksaveasfilename(initialdir=self.projects_dir, defaultextension=".json")
-        if path:
-            self.current_project = os.path.basename(path)
-            self.save_project();
-            self.update_recent_list(self.current_project);
-            self.update_title()
+        if path: self.current_project = os.path.basename(path); self.save_project(); self.update_recent_list(
+            self.current_project); self.update_title()
 
     def update_title(self):
         self.root.title(f"Mind Map Pro - [{self.current_project}]")
@@ -421,8 +460,8 @@ class MindMapApp:
         return None
 
     def on_right_press(self, e):
-        self.tooltip.hide()
-        self.pan_last_x, self.pan_last_y = e.x, e.y
+        self.tooltip.hide();
+        self.pan_last_x, self.pan_last_y = e.x, e.y;
         self.show_right_click_menu(e)
 
     def show_right_click_menu(self, event):
@@ -438,14 +477,13 @@ class MindMapApp:
         menu.post(event.x_root, event.y_root)
 
     def on_double_click(self, e):
-        self.tooltip.hide()
+        self.tooltip.hide();
         nid = self.find_node_at(e.x, e.y)
         if nid:
             if self.nodes[nid].get("links"):
                 self.manage_resources(nid)
             elif self.nodes[nid]["children"]:
-                self.nodes[nid]["expanded"] = not self.nodes[nid].get("expanded", True)
-                self.reorganize_and_zoom()
+                self.nodes[nid]["expanded"] = not self.nodes[nid].get("expanded", True); self.reorganize_and_zoom()
             else:
                 self.edit_node_text(nid)
 
@@ -458,44 +496,69 @@ class MindMapApp:
         f.pack(fill="both", expand=True, padx=10, pady=10)
         tree = ttk.Treeview(f, columns=("Type", "Path"), show="headings")
         tree.heading("Type", text="Type");
-        tree.heading("Path", text="Path / URL")
-        tree.column("Type", width=70, anchor="center");
-        tree.column("Path", width=480)
+        tree.heading("Path", text="Path / URL / Title")
+        tree.column("Type", width=80);
+        tree.column("Path", width=470)
         tree.pack(side="left", fill="both", expand=True)
         vs = tk.Scrollbar(f, command=tree.yview);
-        vs.pack(side="right", fill="y")
+        vs.pack(side="right", fill="y");
         tree.config(yscrollcommand=vs.set)
 
         def refresh():
             for i in tree.get_children(): tree.delete(i)
-            for l in node.get("links", []):
-                r_type = "🌐 Web" if l.startswith("http") else "📄 File"
-                tree.insert("", "end", values=(r_type, l))
+            for idx, l in enumerate(node.get("links", [])):
+                if isinstance(l, dict) and l.get("type") == "note":
+                    tree.insert("", "end", values=("📝 Note", l.get("title", "Untitled")), iid=str(idx))
+                else:
+                    r_type = "🌐 Web" if str(l).startswith("http") else "📄 File"
+                    tree.insert("", "end", values=(r_type, l), iid=str(idx))
 
         def open_selected(e=None):
             sel = tree.selection()
-            if sel: webbrowser.open(tree.item(sel[0])['values'][1])
+            if not sel: return
+            idx = int(sel[0]);
+            item = node["links"][idx]
+            if isinstance(item, dict) and item.get("type") == "note":
+                dialog = NoteDialog(manager, initial_data=item)
+                manager.wait_window(dialog)
+                if dialog.result:
+                    node["links"][idx] = dialog.result
+                    self.save_project();
+                    refresh()
+            else:
+                webbrowser.open(item)
 
         tree.bind("<Double-1>", open_selected)
         btn_f = tk.Frame(manager);
         btn_f.pack(fill="x", pady=10, padx=10)
-        tk.Button(btn_f, text="+ Add URL",
-                  command=lambda: [node.setdefault("links", []).append(simpledialog.askstring("URL", "Address:")),
-                                   refresh(), self.save_project(), self.redraw()]).pack(side="left", padx=2)
-        tk.Button(btn_f, text="+ Add File",
-                  command=lambda: [node.setdefault("links", []).append(filedialog.askopenfilename()), refresh(),
-                                   self.save_project(), self.redraw()]).pack(side="left", padx=2)
-        tk.Button(btn_f, text="Delete Selected", fg="red",
-                  command=lambda: [node["links"].remove(tree.item(tree.selection()[0])['values'][1]), refresh(),
-                                   self.save_project(), self.redraw()] if tree.selection() else None).pack(side="left")
+
+        tk.Button(btn_f, text="+ URL", command=lambda: [
+            (u := simpledialog.askstring("URL", "Address:")) and node["links"].append(u),
+            refresh(), self.save_project(), self.redraw()]).pack(side="left", padx=2)
+
+        tk.Button(btn_f, text="+ File", command=lambda: [
+            (f := filedialog.askopenfilename()) and node["links"].append(f),
+            refresh(), self.save_project(), self.redraw()]).pack(side="left", padx=2)
+
+        def add_note_ui():
+            d = NoteDialog(manager)
+            manager.wait_window(d)
+            if d.result:
+                node["links"].append(d.result)
+                self.save_project()
+                refresh();
+                self.redraw()
+
+        tk.Button(btn_f, text="+ Note", bg="#d1d8ff", command=add_note_ui).pack(side="left", padx=2)
+
+        tk.Button(btn_f, text="Delete", fg="red", command=lambda: [
+            node["links"].pop(int(tree.selection()[0])) if tree.selection() else None,
+            refresh(), self.save_project(), self.redraw()]).pack(side="right")
         refresh()
 
     def edit_node_text(self, nid):
         new = simpledialog.askstring("Edit", "Text:", initialvalue=self.nodes[nid]["text"])
-        if new:
-            self.nodes[nid]["text"] = new;
-            self.save_project();
-            self.redraw()
+        if new: self.nodes[nid]["text"] = new; self.save_project(); self.redraw()
 
     def add_branch(self):
         if not self.selected: return
