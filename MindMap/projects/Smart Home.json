@@ -1,8 +1,9 @@
 {
   "root": {
-    "text": "Central Idea",
+    "text": "Smart Home",
     "children": [
-      "node_1"
+      "node_1",
+      "n_9_6163"
     ],
     "content": {},
     "expanded": true,
@@ -16,14 +17,13 @@
     "text": "HUB",
     "children": [
       "node_2",
-      "node_3",
-      "node_4"
+      "node_3"
     ],
     "content": {},
     "expanded": true,
     "pos": [
-      780,
-      400.0
+      793.7694704049844,
+      315.60767133956386
     ],
     "links": []
   },
@@ -55,22 +55,13 @@
       "https://us.store.tp-link.com/checkouts/cn/hWN6pqOoiX62ftVkIOm10OdX/en-us?_r=AQABEit0KAXUR5DR9lP912iUY8OvTtpzDSMALASGu5j8D0s&auto_redirect=false&company_location_id=&edge_redirect=true&locale=en-US&skip_shop_pay=true"
     ]
   },
-  "node_4": {
-    "text": "H666",
-    "children": [],
-    "content": {},
-    "expanded": true,
-    "pos": [
-      1020,
-      460.0
-    ],
-    "links": []
-  },
   "node_5": {
     "text": "Gina",
-    "children": [],
+    "children": [
+      "n_8_6f05"
+    ],
     "content": {},
-    "expanded": true,
+    "expanded": false,
     "pos": [
       1320,
       280.0
@@ -83,8 +74,8 @@
     "content": {},
     "expanded": true,
     "pos": [
-      1320,
-      340.0
+      1310.25,
+      460.12500000000006
     ],
     "links": []
   },
@@ -97,6 +88,26 @@
       1320,
       400.0
     ],
+    "links": []
+  },
+  "n_8_6f05": {
+    "text": "T1",
+    "children": [],
+    "pos": [
+      1520,
+      280.0
+    ],
+    "expanded": true,
+    "links": []
+  },
+  "n_9_6163": {
+    "text": "DoorBell",
+    "children": [],
+    "pos": [
+      800,
+      400
+    ],
+    "expanded": true,
     "links": []
   }
 }
