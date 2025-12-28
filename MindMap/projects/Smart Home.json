@@ -1,0 +1,102 @@
+{
+  "root": {
+    "text": "Central Idea",
+    "children": [
+      "node_1"
+    ],
+    "content": {},
+    "expanded": true,
+    "pos": [
+      600,
+      400
+    ],
+    "links": []
+  },
+  "node_1": {
+    "text": "HUB",
+    "children": [
+      "node_2",
+      "node_3",
+      "node_4"
+    ],
+    "content": {},
+    "expanded": true,
+    "pos": [
+      780,
+      400.0
+    ],
+    "links": []
+  },
+  "node_2": {
+    "text": "Lights External",
+    "children": [
+      "node_5",
+      "node_6",
+      "node_7"
+    ],
+    "content": {},
+    "expanded": true,
+    "pos": [
+      1068.03738317757,
+      349.3457943925234
+    ],
+    "links": []
+  },
+  "node_3": {
+    "text": "H500",
+    "children": [],
+    "content": {},
+    "expanded": true,
+    "pos": [
+      1020,
+      400.0
+    ],
+    "links": [
+      "https://us.store.tp-link.com/checkouts/cn/hWN6pqOoiX62ftVkIOm10OdX/en-us?_r=AQABEit0KAXUR5DR9lP912iUY8OvTtpzDSMALASGu5j8D0s&auto_redirect=false&company_location_id=&edge_redirect=true&locale=en-US&skip_shop_pay=true"
+    ]
+  },
+  "node_4": {
+    "text": "H666",
+    "children": [],
+    "content": {},
+    "expanded": true,
+    "pos": [
+      1020,
+      460.0
+    ],
+    "links": []
+  },
+  "node_5": {
+    "text": "Gina",
+    "children": [],
+    "content": {},
+    "expanded": true,
+    "pos": [
+      1320,
+      280.0
+    ],
+    "links": []
+  },
+  "node_6": {
+    "text": "Parking",
+    "children": [],
+    "content": {},
+    "expanded": true,
+    "pos": [
+      1320,
+      340.0
+    ],
+    "links": []
+  },
+  "node_7": {
+    "text": "Backyard",
+    "children": [],
+    "content": {},
+    "expanded": true,
+    "pos": [
+      1320,
+      400.0
+    ],
+    "links": []
+  }
+}
