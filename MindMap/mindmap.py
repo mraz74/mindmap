@@ -7,6 +7,36 @@ import platform
 import subprocess
 
 
+# --- NEW TOOLTIP CLASS ---
+class NodeTooltip:
+    def __init__(self, canvas):
+        self.canvas = canvas
+        self.tip_window = None
+        self.id = None
+
+    def show(self, text, x, y):
+        if self.tip_window or not text:
+            return
+        # Offset tooltip from cursor
+        x += 20
+        y += 20
+        self.tip_window = tw = tk.Toplevel(self.canvas)
+        tw.wm_overrideredirect(True)  # Remove window borders
+        tw.wm_geometry(f"+{int(x)}+{int(y)}")
+        tw.attributes("-topmost", True)
+
+        label = tk.Label(tw, text=text, justify="left",
+                         background="#2c3e50", foreground="white", relief="flat", borderwidth=1,
+                         font=("Segoe UI", 9), padx=8, pady=5)
+        label.pack()
+
+    def hide(self):
+        tw = self.tip_window
+        self.tip_window = None
+        if tw:
+            tw.destroy()
+
+
 class MindMapApp:
     def __init__(self, root):
         self.root = root
@@ -66,7 +96,12 @@ class MindMapApp:
         self.selected = None
         self.dragging = None
         self.drag_box_start = None
-        self.drop_target = None  # Tracks the highlighted node during drag
+        self.drop_target = None
+
+        # Hover logic variables
+        self.tooltip = NodeTooltip(self.canvas)
+        self.hover_after_id = None
+        self.last_hover_node = None
 
         # Bindings
         self.canvas.bind("<Button-1>", self.on_left_click)
@@ -76,10 +111,46 @@ class MindMapApp:
         self.canvas.bind("<B3-Motion>", self.do_pan)
         self.canvas.bind("<MouseWheel>", self.on_mouse_zoom)
         self.canvas.bind("<Double-Button-1>", self.on_double_click)
+        self.canvas.bind("<Motion>", self.on_mouse_move)  # Track hover
 
         self.load_project()
         self.root.after(500, self.reorganize_and_zoom)
 
+    # --- HOVER LOGIC ---
+    def on_mouse_move(self, e):
+        nid = self.find_node_at(e.x, e.y)
+
+        # If we moved to a new node (or empty space)
+        if nid != self.last_hover_node:
+            self.cancel_hover()
+            self.tooltip.hide()
+            self.last_hover_node = nid
+
+            if nid:
+                # Start 750ms timer
+                self.hover_after_id = self.root.after(750, lambda: self.show_node_details(nid, e.x_root, e.y_root))
+
+    def cancel_hover(self):
+        if self.hover_after_id:
+            self.root.after_cancel(self.hover_after_id)
+            self.hover_after_id = None
+
+    def show_node_details(self, nid, root_x, root_y):
+        node = self.nodes[nid]
+        details = [f"Node: {node['text']}"]
+        details.append(f"Children: {len(node.get('children', []))}")
+
+        links = node.get("links", [])
+        if links:
+            details.append("\nResources:")
+            for l in links[:5]:  # Show first 5
+                details.append(f"• {os.path.basename(l)}")
+            if len(links) > 5:
+                details.append(f"...and {len(links) - 5} more")
+
+        self.tooltip.show("\n".join(details), root_x, root_y)
+
+    # --- AUTO-LAYOUT LOGIC ---
     def reorganize_nodes(self):
         if not self.nodes: return
         self.next_y = 0
@@ -107,6 +178,7 @@ class MindMapApp:
         self.zoom_all()
 
     def on_left_click(self, e):
+        self.tooltip.hide()
         wx, wy = self.to_world(e.x, e.y)
         clicked_node = self.find_node_at(e.x, e.y)
         if clicked_node:
@@ -122,16 +194,16 @@ class MindMapApp:
             self.drag_box_start = (e.x, e.y)
 
     def is_descendant(self, parent_id, child_id):
-        """Prevents dropping a parent onto its own child (loop protection)."""
         if child_id in self.nodes[parent_id]["children"]: return True
         for sub_child in self.nodes[parent_id]["children"]:
             if self.is_descendant(sub_child, child_id): return True
         return False
 
     def on_drag(self, e):
+        self.cancel_hover()
+        self.tooltip.hide()
         if self.dragging:
             self.nodes[self.dragging]["pos"] = self.to_world(e.x, e.y)
-            # Find potential drop target under the mouse
             target = self.find_node_at(e.x, e.y)
             if target and target != self.dragging and not self.is_descendant(self.dragging, target):
                 self.drop_target = target
@@ -147,15 +219,12 @@ class MindMapApp:
     def on_release(self, e):
         if self.dragging:
             if self.drop_target and self.dragging != self.root_id:
-                # Remove from old parent
                 for pid, node in self.nodes.items():
                     if self.dragging in node["children"]:
                         node["children"].remove(self.dragging)
                         break
-                # Add to new parent
                 self.nodes[self.drop_target]["children"].append(self.dragging)
                 self.reorganize_and_zoom()
-
             self.save_project()
             self.dragging = None
             self.drop_target = None
@@ -182,6 +251,7 @@ class MindMapApp:
         self.redraw()
 
     def on_mouse_zoom(self, e):
+        self.tooltip.hide()
         factor = 1.1 if e.delta > 0 else 0.9
         mx, my = self.to_world(e.x, e.y)
         self.zoom_level *= factor
@@ -191,6 +261,7 @@ class MindMapApp:
         self.redraw()
 
     def do_pan(self, e):
+        self.tooltip.hide()
         self.offset_x += (e.x - self.pan_last_x)
         self.offset_y += (e.y - self.pan_last_y)
         self.pan_last_x, self.pan_last_y = e.x, e.y
@@ -213,7 +284,6 @@ class MindMapApp:
             px, py = 75 * self.zoom_level, 20 * self.zoom_level
             color = ["#4834d4", "#686de0", "#eb4d4b", "#6ab04c"][depth % 4]
 
-            # Highlight node if it's the current drop target
             border_w = max(1, int(2 * self.zoom_level))
             dash_pat = None
             if nid == self.drop_target:
@@ -269,11 +339,9 @@ class MindMapApp:
 
     def show_help(self):
         h = ("Mind Map Pro Help:\n"
-             "- DRAG & DROP: Drag a node onto another to move the whole branch.\n"
-             "- REORGANIZE: Auto-aligns all branches to prevent overlap.\n"
-             "- QUICK BRANCH: Click '+' icon on any node.\n"
-             "- BOX ZOOM: Drag on empty space to zoom into area.\n"
-             "- PAN: Right-click and drag.")
+             "- HOVER: Hold mouse over a node for 750ms to see details.\n"
+             "- DRAG & DROP: Move any node onto another to re-parent.\n"
+             "- REORGANIZE: Click to auto-align tree layout.")
         messagebox.showinfo("Help", h)
 
     def load_settings(self):
@@ -353,6 +421,7 @@ class MindMapApp:
         return None
 
     def on_right_press(self, e):
+        self.tooltip.hide()
         self.pan_last_x, self.pan_last_y = e.x, e.y
         self.show_right_click_menu(e)
 
@@ -369,6 +438,7 @@ class MindMapApp:
         menu.post(event.x_root, event.y_root)
 
     def on_double_click(self, e):
+        self.tooltip.hide()
         nid = self.find_node_at(e.x, e.y)
         if nid:
             if self.nodes[nid].get("links"):
