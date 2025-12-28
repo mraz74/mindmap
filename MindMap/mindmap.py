@@ -16,8 +16,22 @@ class MindMapApp:
         os.makedirs(self.projects_dir, exist_ok=True)
         self.current_project = "central.json"
 
-        self.root.title(f"Mind Map Pro - [{self.current_project}]")
+        self.update_title()
         self.root.geometry("1400x900")
+
+        # --- MENUS ---
+        self.menu_bar = Menu(self.root)
+        self.root.config(menu=self.menu_bar)
+
+        # File Menu
+        self.file_menu = Menu(self.menu_bar, tearoff=0)
+        self.menu_bar.add_cascade(label="File", menu=self.file_menu)
+        self.file_menu.add_command(label="New Project", command=self.new_project)
+        self.file_menu.add_command(label="Open Project", command=self.open_project)
+        self.file_menu.add_separator()
+        self.file_menu.add_command(label="Save As...", command=self.save_as_project)
+        self.file_menu.add_separator()
+        self.file_menu.add_command(label="Exit", command=self.root.quit)
 
         # --- UI LAYOUT ---
         self.toolbar = tk.Frame(self.root, bg="#f5f5f7")
@@ -38,11 +52,10 @@ class MindMapApp:
         # --- CANVAS ---
         self.canvas_frame = tk.Frame(self.root)
         self.canvas_frame.pack(fill="both", expand=True)
-
         self.canvas = tk.Canvas(self.canvas_frame, bg="white", highlightthickness=0)
         self.canvas.pack(side="left", fill="both", expand=True)
 
-        # --- MINIMAP CANVAS ---
+        # --- MINIMAP ---
         self.mini_w, self.mini_h = 200, 150
         self.minimap = tk.Canvas(self.root, width=self.mini_w, height=self.mini_h,
                                  bg="#fdfdfd", highlightthickness=1, highlightbackground="#ccc")
@@ -69,73 +82,79 @@ class MindMapApp:
         self.load_project()
         self.root.after(500, self.zoom_all)
 
-    # --- MINIMAP DRAWING ---
+    # --- PROJECT MANAGEMENT ---
+    def update_title(self):
+        self.root.title(f"Mind Map Pro - [{self.current_project}]")
+
+    def new_project(self):
+        name = simpledialog.askstring("New Project", "Enter project name (e.g. WorkPlan):")
+        if name:
+            if not name.endswith(".json"): name += ".json"
+            self.current_project = name
+            self.nodes = {
+                self.root_id: {"text": "New Idea", "children": [], "pos": (0, 0), "expanded": True, "links": []}}
+            self.save_project()
+            self.update_title()
+            self.zoom_all()
+
+    def open_project(self):
+        file_path = filedialog.askopenfilename(initialdir=self.projects_dir, title="Select Project",
+                                               filetypes=(("JSON files", "*.json"), ("all files", "*.*")))
+        if file_path:
+            self.current_project = os.path.basename(file_path)
+            self.load_project()
+            self.update_title()
+            self.zoom_all()
+
+    def save_as_project(self):
+        file_path = filedialog.asksaveasfilename(initialdir=self.projects_dir, title="Save Project As",
+                                                 defaultextension=".json", filetypes=(("JSON files", "*.json"),))
+        if file_path:
+            self.current_project = os.path.basename(file_path)
+            self.save_project()
+            self.update_title()
+            self.status_var.set(f"Cloned to {self.current_project}")
+
+    # --- CORE LOGIC ---
     def draw_minimap(self):
         self.minimap.delete("all")
         if not self.nodes: return
-
-        # Calculate world bounds
         all_x = [n["pos"][0] for n in self.nodes.values()]
         all_y = [n["pos"][1] for n in self.nodes.values()]
-        min_wx, max_wx = min(all_x) - 200, max(all_x) + 200
-        min_wy, max_wy = min(all_y) - 200, max(all_y) + 200
-        ww, wh = max_wx - min_wx, max_wy - min_wy
-
-        # Scale for minimap
+        min_wx, max_wx = min(all_x) - 400, max(all_x) + 400
+        min_wy, max_wy = min(all_y) - 400, max(all_y) + 400
+        ww, wh = max(1, max_wx - min_wx), max(1, max_wy - min_wy)
         m_scale = min(self.mini_w / ww, self.mini_h / wh)
 
         def to_mini(wx, wy):
-            mx = (wx - min_wx) * m_scale
-            my = (wy - min_wy) * m_scale
-            return mx, my
+            return (wx - min_wx) * m_scale, (wy - min_wy) * m_scale
 
-        # Draw nodes as dots
         for n in self.nodes.values():
             mx, my = to_mini(*n["pos"])
-            self.minimap.create_oval(mx - 2, my - 2, mx + 2, my + 2, fill="#4834d4", outline="")
-
-        # Draw Viewport Rectangle
-        v_tl = self.to_world(0, 0)
+            self.minimap.create_oval(mx - 1, my - 1, mx + 1, my + 1, fill="#4834d4", outline="")
+        v_tl = self.to_world(0, 0);
         v_br = self.to_world(self.canvas.winfo_width(), self.canvas.winfo_height())
-        m_tl = to_mini(*v_tl)
-        m_br = to_mini(*v_br)
+        m_tl, m_br = to_mini(*v_tl), to_mini(*v_br)
         self.minimap.create_rectangle(m_tl[0], m_tl[1], m_br[0], m_br[1], outline="red", width=1)
 
-    # --- ZOOM ALL (ROBUST RESET) ---
     def zoom_all(self):
         if not self.nodes: return
-
         all_x = [n["pos"][0] for n in self.nodes.values()]
         all_y = [n["pos"][1] for n in self.nodes.values()]
-
         min_wx, max_wx = min(all_x) - 150, max(all_x) + 150
         min_wy, max_wy = min(all_y) - 100, max(all_y) + 100
-
-        world_w = max(max_wx - min_wx, 100)
-        world_h = max(max_wy - min_wy, 100)
-
-        win_w = max(self.canvas.winfo_width(), 100)
-        win_h = max(self.canvas.winfo_height(), 100)
-
-        self.zoom_level = min(win_w / world_w, win_h / world_h, 1.5)
-
-        # Hard reset offsets to the center
+        win_w, win_h = max(self.canvas.winfo_width(), 100), max(self.canvas.winfo_height(), 100)
+        self.zoom_level = min(win_w / max(1, max_wx - min_wx), win_h / max(1, max_wy - min_wy), 1.5)
         self.offset_x = (win_w / 2) - ((min_wx + max_wx) / 2) * self.zoom_level
         self.offset_y = (win_h / 2) - ((min_wy + max_wy) / 2) * self.zoom_level
-
         self.redraw()
-        self.status_var.set(f"View Reset. Zoom: {int(self.zoom_level * 100)}%")
 
-    # --- UPDATED PANNING ---
     def do_pan(self, e):
-        dx = e.x - self.pan_last_x
-        dy = e.y - self.pan_last_y
-        self.offset_x += dx
-        self.offset_y += dy
-        self.pan_last_x, self.pan_last_y = e.x, e.y
+        self.offset_x += (e.x - self.pan_last_x);
+        self.offset_y += (e.y - self.pan_last_y)
+        self.pan_last_x, self.pan_last_y = e.x, e.y;
         self.redraw()
 
-    # --- RENDERING ---
     def to_screen(self, wx, wy):
         return (wx * self.zoom_level) + self.offset_x, (wy * self.zoom_level) + self.offset_y
 
@@ -145,52 +164,29 @@ class MindMapApp:
     def redraw(self):
         self.canvas.delete("all")
 
-        # Optimization: Only draw tree if within a reasonable coordinate range
         def draw_tree(nid, depth=0):
             node = self.nodes[nid]
             sx, sy = self.to_screen(*node["pos"])
-            expanded = node.get("expanded", True)
-            if expanded:
+            if node.get("expanded", True):
                 for cid in node["children"]:
                     if cid in self.nodes:
                         cx, cy = self.to_screen(*self.nodes[cid]["pos"])
                         self.canvas.create_line(sx, sy, (sx + cx) / 2, sy, (sx + cx) / 2, cy, cx, cy, smooth=True,
                                                 fill="#dcdde1", width=max(1, int(2 * self.zoom_level)))
                         draw_tree(cid, depth + 1)
-
             px, py = 75 * self.zoom_level, 20 * self.zoom_level
             color = ["#4834d4", "#686de0", "#eb4d4b", "#6ab04c"][depth % 4]
             self.canvas.create_rectangle(sx - px, sy - py, sx + px, sy + py, fill="white", outline=color,
                                          width=max(1, int(2 * self.zoom_level)))
             self.canvas.create_text(sx, sy, text=node["text"],
                                     font=("Segoe UI", max(5, int(10 * self.zoom_level)), "bold"))
-
-            if not expanded and node["children"]:
+            if not node.get("expanded", True) and node["children"]:
                 self.canvas.create_text(sx + px - 12, sy + py - 8, text=f"+({len(node['children'])})",
                                         font=("Segoe UI", max(5, int(7 * self.zoom_level))), fill="#636e72")
             if node.get("links"):
                 self.canvas.create_text(sx - px + 12, sy, text="🔗", font=("Segoe UI", max(5, int(8 * self.zoom_level))))
 
-        if self.nodes:
-            draw_tree(self.root_id)
-            self.draw_minimap()
-
-    def show_help(self):
-        messagebox.showinfo("Help",
-                            "Right-Drag: Pan view\nLeft-Drag: Move node\nDouble-Click: Edit/Expand\nMinimap: Red box shows current view.")
-
-    def show_project_info(self):
-        info_win = tk.Toplevel(self.root)
-        info_win.title("Project Info")
-        info_win.geometry("400x200")
-        tk.Label(info_win, text=f"Active: {self.current_project}\nPath: {self.projects_dir}", pady=20).pack()
-        tk.Button(info_win, text="Open Folder", command=lambda: self.open_folder(self.projects_dir)).pack()
-
-    def open_folder(self, path):
-        if platform.system() == "Windows":
-            os.startfile(path)
-        else:
-            subprocess.call(["open" if platform.system() == "Darwin" else "xdg-open", path])
+        if self.nodes: draw_tree(self.root_id); self.draw_minimap()
 
     def on_right_press(self, e):
         self.pan_last_x, self.pan_last_y = e.x, e.y; self.show_right_click_menu(e)
@@ -270,6 +266,12 @@ class MindMapApp:
         else:
             self.open_folder(path)
 
+    def open_folder(self, path):
+        if platform.system() == "Windows":
+            os.startfile(path)
+        else:
+            subprocess.call(["open" if platform.system() == "Darwin" else "xdg-open", path])
+
     def edit_node_text(self, nid):
         new = simpledialog.askstring("Edit", "Text:", initialvalue=self.nodes[nid]["text"])
         if new: self.nodes[nid]["text"] = new; self.save_project(); self.redraw()
@@ -301,6 +303,17 @@ class MindMapApp:
             if nid != self.root_id: n["expanded"] = False
         self.redraw()
 
+    def show_help(self):
+        messagebox.showinfo("Help",
+                            "File Menu: New/Open/Save As\nRight-Drag: Pan view\nMinimap: Bottom-right navigation aid.")
+
+    def show_project_info(self):
+        info_win = tk.Toplevel(self.root)
+        info_win.title("Project Info")
+        info_win.geometry("400x200")
+        tk.Label(info_win, text=f"Active: {self.current_project}\nPath: {self.projects_dir}", pady=20).pack()
+        tk.Button(info_win, text="Open Folder", command=lambda: self.open_folder(self.projects_dir)).pack()
+
     def save_project(self):
         with open(os.path.join(self.projects_dir, self.current_project), "w") as f: json.dump(self.nodes, f, indent=2)
 
@@ -309,6 +322,7 @@ class MindMapApp:
         if os.path.exists(p):
             with open(p, "r") as f:
                 self.nodes = json.load(f)
+            for n in self.nodes.values(): n.setdefault("links", [])
         else:
             self.nodes = {
                 self.root_id: {"text": "Central Idea", "children": [], "pos": (0, 0), "expanded": True, "links": []}}
