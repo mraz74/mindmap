@@ -167,6 +167,11 @@ class MindMapApp:
         self.root.geometry("1400x900")
         self.update_title()
 
+        # --- SEARCH STATE ---
+        self.search_matches = []
+        self.current_match_index = -1
+        self.last_search_query = ""
+
         # --- MENUS ---
         self.menu_bar = Menu(self.root)
         self.root.config(menu=self.menu_bar)
@@ -186,12 +191,31 @@ class MindMapApp:
         self.toolbar = tk.Frame(self.root, bg="#f5f5f7")
         self.toolbar.pack(fill="x", side="top")
 
-        tk.Button(self.toolbar, text="Reorganize Map", command=self.reorganize_and_zoom, bg="#c8e6c9",
-                  font=("Segoe UI", 9, "bold")).pack(side="left", padx=5, pady=3)
-        tk.Button(self.toolbar, text="Zoom All", command=self.zoom_all, bg="#d1d8ff",
-                  font=("Segoe UI", 9, "bold")).pack(side="left", padx=5, pady=3)
+        # Left side buttons
+        tk.Button(self.toolbar, text="Reorganize", command=self.reorganize_and_zoom, bg="#c8e6c9",
+                  font=("Segoe UI", 9)).pack(side="left", padx=5, pady=3)
+        tk.Button(self.toolbar, text="Zoom All", command=self.zoom_all, bg="#d1d8ff", font=("Segoe UI", 9)).pack(
+            side="left", padx=5, pady=3)
         tk.Button(self.toolbar, text="Expand All", command=self.expand_all).pack(side="left", padx=5, pady=3)
         tk.Button(self.toolbar, text="Collapse All", command=self.collapse_all).pack(side="left", padx=5, pady=3)
+
+        # Search Bar (Center/Right)
+        search_frame = tk.Frame(self.toolbar, bg="#f5f5f7")
+        search_frame.pack(side="left", padx=20)
+        tk.Label(search_frame, text="Search:", bg="#f5f5f7").pack(side="left")
+
+        self.search_var = tk.StringVar()
+        self.search_entry = tk.Entry(search_frame, textvariable=self.search_var, width=25)
+        self.search_entry.pack(side="left", padx=5)
+        self.search_entry.bind("<Return>", self.perform_search)
+
+        tk.Button(search_frame, text="Go", command=lambda: self.perform_search(None), bg="#ffeaa7").pack(side="left")
+
+        # Result Count Label (Added next to Go button)
+        self.search_res_label = tk.Label(search_frame, text="", bg="#f5f5f7", font=("Segoe UI", 9, "bold"), fg="#555")
+        self.search_res_label.pack(side="left", padx=10)
+
+        # Right side buttons
         tk.Button(self.toolbar, text="Help", command=self.show_help).pack(side="right", padx=10, pady=3)
 
         self.status_var = tk.StringVar(value="Ready")
@@ -229,8 +253,98 @@ class MindMapApp:
         self.load_project()
         self.root.after(500, self.reorganize_and_zoom)
 
+    # --- SEARCH FUNCTIONALITY ---
+    def perform_search(self, event):
+        query = self.search_var.get().lower().strip()
+        if not query:
+            self.status_var.set("Please enter text to search.")
+            self.search_res_label.config(text="")
+            return
+
+        # If query changed, reset search
+        # Check if new search
+        if query != self.last_search_query:
+            # 1. Clear previous marks immediately
+            if self.selected:
+                self.selected = None
+                self.redraw()
+
+            self.last_search_query = query
+            self.search_matches = []
+            self.current_match_index = -1
+
+            # Scan all nodes
+            for nid, node in self.nodes.items():
+                match = False
+                # Check Title
+                if query in node["text"].lower(): match = True
+
+                # Check Resources (Links/Notes)
+                if not match:
+                    for link in node.get("links", []):
+                        if isinstance(link, dict):  # Note
+                            if query in link.get("title", "").lower() or query in link.get("content", "").lower():
+                                match = True;
+                                break
+                        else:  # String URL/Path
+                            if query in str(link).lower():
+                                match = True;
+                                break
+
+                if match: self.search_matches.append(nid)
+
+        # 2. Handle Not Found
+        if not self.search_matches:
+            self.status_var.set(f"No matches found for '{query}'")
+            self.search_res_label.config(text="0 found", fg="red")
+            #messagebox.showinfo("Search", f"No matches found for:\n'{query}'")
+            return
+
+        # Cycle to next match
+        self.current_match_index = (self.current_match_index + 1) % len(self.search_matches)
+        target_nid = self.search_matches[self.current_match_index]
+
+        self.reveal_node(target_nid)
+        self.center_on_node(target_nid)
+        self.selected = target_nid
+
+        # 3. Update Result Label
+        count_text = f"{self.current_match_index + 1} of {len(self.search_matches)}"
+        self.search_res_label.config(text=count_text, fg="#2ecc71")  # Green text for found
+        self.status_var.set(f"Match {count_text}: {self.nodes[target_nid]['text']}")
+        self.redraw()
+
+    def reveal_node(self, nid):
+        """Walks up the tree and expands all parents so the node is visible."""
+        current = nid
+        # Create a map of child -> parent for easy traversal
+        child_to_parent = {}
+        for pid, node in self.nodes.items():
+            for child in node["children"]:
+                child_to_parent[child] = pid
+
+        while current in child_to_parent:
+            parent_id = child_to_parent[current]
+            self.nodes[parent_id]["expanded"] = True
+            current = parent_id
+
+        self.reorganize_nodes()  # Recalculate positions since we expanded nodes
+
+    def center_on_node(self, nid):
+        if nid not in self.nodes: return
+        nx, ny = self.nodes[nid]["pos"]
+
+        sw = self.canvas.winfo_width()
+        sh = self.canvas.winfo_height()
+
+        self.offset_x = (sw / 2) - (nx * self.zoom_level)
+        self.offset_y = (sh / 2) - (ny * self.zoom_level)
+        self.redraw()
+
+    # --- STANDARD APP LOGIC ---
+
     def on_mouse_move(self, e):
-        nid = self.find_node_at(e.x, e.y, exclude=self.dragging)  # Don't hover self while dragging
+        nid = self.find_node_at(e.x, e.y, exclude=self.dragging)
         if nid != self.last_hover_node:
             self.cancel_hover()
             self.tooltip.hide()
@@ -286,7 +400,6 @@ class MindMapApp:
         if clicked_node:
             nx, ny = self.nodes[clicked_node]["pos"]
             px = 75
-            # Check if "+" icon was clicked
             if (nx + px - 15) < wx < (nx + px + 15) and (ny - 15) < wy < (ny + 15):
                 self.selected = clicked_node
                 self.add_branch()
@@ -295,6 +408,7 @@ class MindMapApp:
             self.dragging = self.selected
         else:
             self.drag_box_start = (e.x, e.y)
+        self.redraw()  # Force redraw to update selection highlight
 
     def is_descendant(self, parent_id, child_id):
         if child_id in self.nodes[parent_id]["children"]: return True
@@ -307,10 +421,7 @@ class MindMapApp:
         self.tooltip.hide()
         if self.dragging:
             self.nodes[self.dragging]["pos"] = self.to_world(e.x, e.y)
-            # CRITICAL FIX: Pass 'exclude=self.dragging' so we find the node UNDER the one we are dragging
             target = self.find_node_at(e.x, e.y, exclude=self.dragging)
-
-            # Ensure we don't drop on ourselves or our own children
             if target and target != self.dragging and not self.is_descendant(self.dragging, target):
                 self.drop_target = target
             else:
@@ -325,16 +436,13 @@ class MindMapApp:
     def on_release(self, e):
         if self.dragging:
             if self.drop_target and self.dragging != self.root_id:
-                # Remove from old parent
                 for pid, node in self.nodes.items():
                     if self.dragging in node["children"]:
                         node["children"].remove(self.dragging)
                         break
-                # Attach to new parent
                 self.nodes[self.drop_target]["children"].append(self.dragging)
                 self.reorganize_and_zoom()
             else:
-                # If no target, snap back to organized position
                 self.reorganize_nodes()
 
             self.save_project()
@@ -396,6 +504,10 @@ class MindMapApp:
             bw = 4 if nid == self.drop_target else max(1, int(2 * self.zoom_level))
             dash = (5, 5) if nid == self.drop_target else None
 
+            # Highlight selected node (from search or click)
+            if nid == self.selected:
+                self.canvas.create_oval(sx - px - 5, sy - py - 5, sx + px + 5, sy + py + 5, outline="#f1c40f", width=3)
+
             self.canvas.create_rectangle(sx - px, sy - py, sx + px, sy + py, fill="white", outline=color, width=bw,
                                          dash=dash)
             self.canvas.create_text(sx, sy, text=node["text"],
@@ -439,8 +551,7 @@ class MindMapApp:
         self.redraw()
 
     def show_help(self):
-        # [User Info]: Help updated with relevant code changes
-        h = "Mind Map Pro Help:\n\n- DRAG & DROP: Drag a node onto another to re-parent it.\n- RESOURCES: Right-click > Resources (URLs, Files, Notes).\n- FORMATTING: In Notes, use Ctrl+B (Bold), * (Bullet), 1. (Numbered).\n- LINKS: Typing URLs auto-highlights them; click to open."
+        h = "Mind Map Pro Help:\n\n- SEARCH: Type in the top bar and press Enter to find nodes or notes.\n- DRAG & DROP: Drag a node onto another to re-parent it.\n- RESOURCES: Right-click > Resources (URLs, Files, Notes).\n- FORMATTING: In Notes, use Ctrl+B (Bold), * (Bullet), 1. (Numbered)."
         messagebox.showinfo("Help", h)
 
     def load_settings(self):
@@ -511,9 +622,8 @@ class MindMapApp:
     def find_node_at(self, x, y, exclude=None):
         wx, wy = self.to_world(x, y)
         for nid, node in self.nodes.items():
-            if nid == exclude: continue  # Skip the node being dragged
+            if nid == exclude: continue
             nx, ny = node["pos"]
-            # Increased detection box for easier dropping (90x35)
             if nx - 90 < wx < nx + 90 and ny - 35 < wy < ny + 35: return nid
         return None
 
