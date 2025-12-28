@@ -3,27 +3,27 @@
     "text": "Smart Home",
     "children": [
       "node_1",
+      "node_2",
       "n_8_c13d"
     ],
     "content": {},
     "expanded": true,
     "pos": [
       0,
-      240.0
+      160.0
     ],
     "links": []
   },
   "node_1": {
     "text": "HUB",
     "children": [
-      "node_2",
       "node_3"
     ],
     "content": {},
     "expanded": true,
     "pos": [
       220,
-      160.0
+      0.0
     ],
     "links": []
   },
@@ -37,8 +37,8 @@
     "content": {},
     "expanded": true,
     "pos": [
-      440,
-      80.0
+      220,
+      160.0
     ],
     "links": []
   },
@@ -49,7 +49,7 @@
     "expanded": true,
     "pos": [
       440,
-      240
+      0
     ],
     "links": [
       "https://us.store.tp-link.com/checkouts/cn/hWN6pqOoiX62ftVkIOm10OdX/en-us?_r=AQABEit0KAXUR5DR9lP912iUY8OvTtpzDSMALASGu5j8D0s&auto_redirect=false&company_location_id=&edge_redirect=true&locale=en-US&skip_shop_pay=true"
@@ -57,25 +57,25 @@
   },
   "node_5": {
     "text": "Gina",
+    "children": [],
+    "content": {},
+    "expanded": true,
+    "pos": [
+      440,
+      80
+    ],
+    "links": []
+  },
+  "node_6": {
+    "text": "Parking",
     "children": [
       "n_8_6f05"
     ],
     "content": {},
     "expanded": true,
     "pos": [
-      660,
-      0.0
-    ],
-    "links": []
-  },
-  "node_6": {
-    "text": "Parking",
-    "children": [],
-    "content": {},
-    "expanded": true,
-    "pos": [
-      660,
-      80
+      440,
+      160.0
     ],
     "links": []
   },
@@ -85,8 +85,8 @@
     "content": {},
     "expanded": true,
     "pos": [
-      660,
-      160
+      440,
+      240
     ],
     "links": []
   },
@@ -94,8 +94,8 @@
     "text": "T1",
     "children": [],
     "pos": [
-      880,
-      0
+      660,
+      160
     ],
     "expanded": true,
     "links": []

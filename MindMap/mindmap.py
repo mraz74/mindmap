@@ -41,7 +41,6 @@ class MindMapApp:
         self.toolbar = tk.Frame(self.root, bg="#f5f5f7")
         self.toolbar.pack(fill="x", side="top")
 
-        # ADDED REORGANIZE BUTTON
         tk.Button(self.toolbar, text="Reorganize Map", command=self.reorganize_and_zoom, bg="#c8e6c9",
                   font=("Segoe UI", 9, "bold")).pack(side="left", padx=5, pady=3)
 
@@ -67,6 +66,7 @@ class MindMapApp:
         self.selected = None
         self.dragging = None
         self.drag_box_start = None
+        self.drop_target = None  # Tracks the highlighted node during drag
 
         # Bindings
         self.canvas.bind("<Button-1>", self.on_left_click)
@@ -80,34 +80,22 @@ class MindMapApp:
         self.load_project()
         self.root.after(500, self.reorganize_and_zoom)
 
-    # --- AUTO-LAYOUT LOGIC ---
     def reorganize_nodes(self):
-        """Calculates optimal tree positions recursively."""
         if not self.nodes: return
-
         self.next_y = 0
-        v_gap = 80  # Vertical space between nodes
-        h_gap = 220  # Horizontal space between levels
+        v_gap, h_gap = 80, 220
 
         def layout_recursive(nid, depth):
             node = self.nodes[nid]
             x_pos = depth * h_gap
-
-            # If node is leaf or collapsed, it takes up one 'slot' of Y space
             if not node.get("expanded", True) or not node["children"]:
                 y_pos = self.next_y
                 node["pos"] = [x_pos, y_pos]
                 self.next_y += v_gap
                 return y_pos
             else:
-                # Parent node: Layout all children first
-                child_ys = []
-                for cid in node["children"]:
-                    if cid in self.nodes:
-                        child_ys.append(layout_recursive(cid, depth + 1))
-
-                # Center the parent between its top and bottom child
-                actual_y = (child_ys[0] + child_ys[-1]) / 2
+                child_ys = [layout_recursive(cid, depth + 1) for cid in node["children"] if cid in self.nodes]
+                actual_y = (child_ys[0] + child_ys[-1]) / 2 if child_ys else self.next_y
                 node["pos"] = [x_pos, actual_y]
                 return actual_y
 
@@ -133,9 +121,22 @@ class MindMapApp:
         else:
             self.drag_box_start = (e.x, e.y)
 
+    def is_descendant(self, parent_id, child_id):
+        """Prevents dropping a parent onto its own child (loop protection)."""
+        if child_id in self.nodes[parent_id]["children"]: return True
+        for sub_child in self.nodes[parent_id]["children"]:
+            if self.is_descendant(sub_child, child_id): return True
+        return False
+
     def on_drag(self, e):
         if self.dragging:
             self.nodes[self.dragging]["pos"] = self.to_world(e.x, e.y)
+            # Find potential drop target under the mouse
+            target = self.find_node_at(e.x, e.y)
+            if target and target != self.dragging and not self.is_descendant(self.dragging, target):
+                self.drop_target = target
+            else:
+                self.drop_target = None
             self.redraw()
         elif self.drag_box_start:
             self.redraw()
@@ -144,6 +145,22 @@ class MindMapApp:
             self.canvas.create_rectangle(x0, y0, e.x, e.y, outline=color, dash=(4, 4), width=2)
 
     def on_release(self, e):
+        if self.dragging:
+            if self.drop_target and self.dragging != self.root_id:
+                # Remove from old parent
+                for pid, node in self.nodes.items():
+                    if self.dragging in node["children"]:
+                        node["children"].remove(self.dragging)
+                        break
+                # Add to new parent
+                self.nodes[self.drop_target]["children"].append(self.dragging)
+                self.reorganize_and_zoom()
+
+            self.save_project()
+            self.dragging = None
+            self.drop_target = None
+            self.redraw()
+
         if self.drag_box_start:
             x0, y0 = self.drag_box_start
             if e.x < x0 or e.y < y0:
@@ -153,9 +170,6 @@ class MindMapApp:
                     self.box_zoom(x0, y0, e.x, e.y)
             self.drag_box_start = None
             self.redraw()
-        if self.dragging:
-            self.save_project()
-            self.dragging = None
 
     def box_zoom(self, x0, y0, x1, y1):
         wx0, wy0 = self.to_world(x0, y0)
@@ -192,19 +206,25 @@ class MindMapApp:
                 for cid in node["children"]:
                     if cid in self.nodes:
                         cx, cy = self.to_screen(*self.nodes[cid]["pos"])
-                        # Connection Arrows/Lines
                         self.canvas.create_line(sx, sy, (sx + cx) / 2, sy, (sx + cx) / 2, cy, cx, cy, smooth=True,
                                                 fill="#dcdde1", width=max(1, int(2 * self.zoom_level)))
                         draw_tree(cid, depth + 1)
 
             px, py = 75 * self.zoom_level, 20 * self.zoom_level
             color = ["#4834d4", "#686de0", "#eb4d4b", "#6ab04c"][depth % 4]
+
+            # Highlight node if it's the current drop target
+            border_w = max(1, int(2 * self.zoom_level))
+            dash_pat = None
+            if nid == self.drop_target:
+                border_w = 4
+                dash_pat = (5, 5)
+
             self.canvas.create_rectangle(sx - px, sy - py, sx + px, sy + py, fill="white", outline=color,
-                                         width=max(1, int(2 * self.zoom_level)))
+                                         width=border_w, dash=dash_pat)
             self.canvas.create_text(sx, sy, text=node["text"],
                                     font=("Segoe UI", max(5, int(10 * self.zoom_level)), "bold"))
 
-            # Plus icon
             btn_r = 8 * self.zoom_level
             self.canvas.create_oval(sx + px - btn_r, sy - btn_r, sx + px + btn_r, sy + btn_r,
                                     fill="white", outline=color, width=1)
@@ -248,11 +268,12 @@ class MindMapApp:
         self.redraw()
 
     def show_help(self):
-        h = ("NEW: Reorganize Button\n"
-             "- Click 'Reorganize Map' to auto-align all branches into an optimal tree layout.\n\n"
-             "- Click the '+' icon to add a child.\n"
-             "- Right-Drag: Pan.\n"
-             "- Double-Click: Collapse/Expand or Edit.")
+        h = ("Mind Map Pro Help:\n"
+             "- DRAG & DROP: Drag a node onto another to move the whole branch.\n"
+             "- REORGANIZE: Auto-aligns all branches to prevent overlap.\n"
+             "- QUICK BRANCH: Click '+' icon on any node.\n"
+             "- BOX ZOOM: Drag on empty space to zoom into area.\n"
+             "- PAN: Right-click and drag.")
         messagebox.showinfo("Help", h)
 
     def load_settings(self):
@@ -269,7 +290,7 @@ class MindMapApp:
         recents.insert(0, filename)
         self.settings["recent"] = recents[:5]
         self.settings["last_project"] = filename
-        self.save_settings()
+        self.save_settings();
         self.update_recent_menu()
 
     def update_recent_menu(self):
