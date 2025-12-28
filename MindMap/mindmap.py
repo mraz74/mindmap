@@ -79,13 +79,27 @@ class MindMapApp:
         self.load_project()
         self.root.after(500, self.zoom_all)
 
-    # --- RESTORED & ENHANCED RESOURCE MANAGER ---
+    # --- UPDATED INTERACTION (AUTO-FIT) ---
+    def on_double_click(self, e):
+        nid = self.find_node_at(e.x, e.y)
+        if nid:
+            if self.nodes[nid].get("links"):
+                self.manage_resources(nid)
+            elif self.nodes[nid]["children"]:
+                # Toggle expansion
+                self.nodes[nid]["expanded"] = not self.nodes[nid].get("expanded", True)
+                # Auto-fit view to include new objects
+                self.zoom_all()
+            else:
+                self.edit_node_text(nid)
+
+    # --- RESOURCE MANAGER ---
     def manage_resources(self, nid):
         node = self.nodes[nid]
         manager = tk.Toplevel(self.root)
         manager.title(f"Resources: {node['text']}")
         manager.geometry("650x450")
-        manager.transient(self.root)  # Keep on top of main window
+        manager.transient(self.root)
 
         f = tk.Frame(manager)
         f.pack(fill="both", expand=True, padx=10, pady=10)
@@ -119,10 +133,8 @@ class MindMapApp:
             sel = tree.selection()
             if sel: webbrowser.open(tree.item(sel[0])['values'][1])
 
-        # Tree Binding
         tree.bind("<Double-1>", open_selected)
 
-        # Button Rows
         btn_f = tk.Frame(manager)
         btn_f.pack(fill="x", pady=10, padx=10)
 
@@ -135,7 +147,6 @@ class MindMapApp:
         tk.Button(btn_f, text="Copy Path", command=copy_selected).pack(side="left", padx=2)
         tk.Button(btn_f, text="Open", command=open_selected, bg="#e1f5fe").pack(side="left", padx=2)
 
-        # Bottom Row
         bottom_f = tk.Frame(manager)
         bottom_f.pack(fill="x", side="bottom", pady=10, padx=10)
 
@@ -146,7 +157,29 @@ class MindMapApp:
 
         refresh()
 
-    # --- SETTINGS & PROJECT OPS ---
+    # --- ZOOM ALL (VISIBLE ONLY) ---
+    def zoom_all(self):
+        if not self.nodes: return
+        v_coords = []
+
+        def collect_v(nid):
+            v_coords.append(self.nodes[nid]["pos"])
+            if self.nodes[nid].get("expanded", True):
+                for cid in self.nodes[nid]["children"]:
+                    if cid in self.nodes: collect_v(cid)
+
+        collect_v(self.root_id)
+        all_x = [p[0] for p in v_coords];
+        all_y = [p[1] for p in v_coords]
+        min_wx, max_wx = min(all_x) - 100, max(all_x) + 100
+        min_wy, max_wy = min(all_y) - 60, max(all_y) + 60
+        win_w, win_h = max(self.canvas.winfo_width(), 100), max(self.canvas.winfo_height(), 100)
+        self.zoom_level = min(win_w / max(max_wx - min_wx, 1), win_h / max(max_wy - min_wy, 1), 1.5)
+        self.offset_x = (win_w / 2) - ((min_wx + max_wx) / 2) * self.zoom_level
+        self.offset_y = (win_h / 2) - ((min_wy + max_wy) / 2) * self.zoom_level
+        self.redraw()
+
+    # --- PROJECT & SETTINGS ---
     def load_settings(self):
         if os.path.exists(self.settings_path):
             try:
@@ -165,7 +198,7 @@ class MindMapApp:
         recents.insert(0, filename)
         self.settings["recent"] = recents[:5]
         self.settings["last_project"] = filename
-        self.save_settings()
+        self.save_settings();
         self.update_recent_menu()
 
     def update_recent_menu(self):
@@ -204,28 +237,7 @@ class MindMapApp:
             self.update_recent_list(self.current_project);
             self.update_title()
 
-    # --- RENDER ENGINE ---
-    def zoom_all(self):
-        if not self.nodes: return
-        v_coords = []
-
-        def collect_v(nid):
-            v_coords.append(self.nodes[nid]["pos"])
-            if self.nodes[nid].get("expanded", True):
-                for cid in self.nodes[nid]["children"]:
-                    if cid in self.nodes: collect_v(cid)
-
-        collect_v(self.root_id)
-        all_x = [p[0] for p in v_coords];
-        all_y = [p[1] for p in v_coords]
-        min_wx, max_wx = min(all_x) - 100, max(all_x) + 100
-        min_wy, max_wy = min(all_y) - 60, max(all_y) + 60
-        win_w, win_h = max(self.canvas.winfo_width(), 100), max(self.canvas.winfo_height(), 100)
-        self.zoom_level = min(win_w / max(max_wx - min_wx, 1), win_h / max(max_wy - min_wy, 1), 1.5)
-        self.offset_x = (win_w / 2) - ((min_wx + max_wx) / 2) * self.zoom_level
-        self.offset_y = (win_h / 2) - ((min_wy + max_wy) / 2) * self.zoom_level
-        self.redraw()
-
+    # --- DRAWING ---
     def to_screen(self, wx, wy):
         return (wx * self.zoom_level) + self.offset_x, (wy * self.zoom_level) + self.offset_y
 
@@ -261,7 +273,7 @@ class MindMapApp:
 
     def draw_minimap(self):
         self.minimap.delete("all")
-        all_x = [n["pos"][0] for n in self.nodes.values()]
+        all_x = [n["pos"][0] for n in self.nodes.values()];
         all_y = [n["pos"][1] for n in self.nodes.values()]
         min_wx, max_wx = min(all_x) - 400, max(all_x) + 400
         min_wy, max_wy = min(all_y) - 400, max(all_y) + 400
@@ -276,7 +288,7 @@ class MindMapApp:
         m_tl, m_br = to_m(*v_tl), to_m(*v_br)
         self.minimap.create_rectangle(m_tl[0], m_tl[1], m_br[0], m_br[1], outline="red")
 
-    # --- INTERACTION ---
+    # --- INPUT ---
     def do_pan(self, e):
         self.offset_x += (e.x - self.pan_last_x);
         self.offset_y += (e.y - self.pan_last_y)
@@ -297,16 +309,6 @@ class MindMapApp:
 
     def on_mouse_scroll_v(self, e):
         self.offset_y += (e.delta / 2); self.redraw()
-
-    def on_double_click(self, e):
-        nid = self.find_node_at(e.x, e.y)
-        if nid:
-            if self.nodes[nid].get("links"):
-                self.manage_resources(nid)
-            elif self.nodes[nid]["children"]:
-                self.nodes[nid]["expanded"] = not self.nodes[nid].get("expanded", True); self.redraw()
-            else:
-                self.edit_node_text(nid)
 
     def find_node_at(self, x, y):
         wx, wy = self.to_world(x, y)
@@ -351,19 +353,18 @@ class MindMapApp:
 
     def expand_all(self):
         for n in self.nodes.values(): n["expanded"] = True
-        self.redraw()
+        self.zoom_all()  # Added auto-zoom here too
 
     def collapse_all(self):
         for nid, n in self.nodes.items():
             if nid != self.root_id: n["expanded"] = False
-        self.redraw()
+        self.zoom_all()  # Added auto-zoom here too
 
     def show_help(self):
-        h = ("RESOURCES:\n- Double-Click list item to Open.\n"
-             "- Type column icons distinguish Web vs File.\n"
-             "- Use 'Close' button or 'X' to exit resources.\n\n"
-             "SHORTCUTS:\n- Double-Click Node (no links): Edit Text.\n"
-             "- Double-Click Node (with links): Open Resources.")
+        h = ("AUTOMATION:\n- Expanding/Collapsing branches automatically fits the view to the screen.\n"
+             "- Expand All / Collapse All now also auto-zoom.\n\n"
+             "RESOURCES:\n- Double-Click list item to Open.\n"
+             "- Use 'Close' button to exit resource manager.")
         messagebox.showinfo("Help", h)
 
     def show_project_info(self):
