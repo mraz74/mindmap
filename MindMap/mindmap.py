@@ -14,7 +14,11 @@ class MindMapApp:
         # --- STATE ---
         self.projects_dir = os.path.abspath("projects")
         os.makedirs(self.projects_dir, exist_ok=True)
-        self.current_project = "central.json"
+        self.settings_path = os.path.join(self.projects_dir, "settings.json")
+
+        # Load settings for last project and recents
+        self.settings = self.load_settings()
+        self.current_project = self.settings.get("last_project", "central.json")
 
         self.update_title()
         self.root.geometry("1400x900")
@@ -23,11 +27,16 @@ class MindMapApp:
         self.menu_bar = Menu(self.root)
         self.root.config(menu=self.menu_bar)
 
-        # File Menu
         self.file_menu = Menu(self.menu_bar, tearoff=0)
         self.menu_bar.add_cascade(label="File", menu=self.file_menu)
         self.file_menu.add_command(label="New Project", command=self.new_project)
         self.file_menu.add_command(label="Open Project", command=self.open_project)
+
+        # Recent Projects Sub-menu
+        self.recent_menu = Menu(self.file_menu, tearoff=0)
+        self.file_menu.add_cascade(label="Recent Projects", menu=self.recent_menu)
+        self.update_recent_menu()
+
         self.file_menu.add_separator()
         self.file_menu.add_command(label="Save As...", command=self.save_as_project)
         self.file_menu.add_separator()
@@ -49,13 +58,12 @@ class MindMapApp:
         tk.Label(self.root, textvariable=self.status_var, bd=1, relief="sunken", anchor="w", bg="#f0f0f0").pack(
             side="bottom", fill="x")
 
-        # --- CANVAS ---
+        # --- CANVAS & MINIMAP ---
         self.canvas_frame = tk.Frame(self.root)
         self.canvas_frame.pack(fill="both", expand=True)
         self.canvas = tk.Canvas(self.canvas_frame, bg="white", highlightthickness=0)
         self.canvas.pack(side="left", fill="both", expand=True)
 
-        # --- MINIMAP ---
         self.mini_w, self.mini_h = 200, 150
         self.minimap = tk.Canvas(self.root, width=self.mini_w, height=self.mini_h,
                                  bg="#fdfdfd", highlightthickness=1, highlightbackground="#ccc")
@@ -82,61 +90,62 @@ class MindMapApp:
         self.load_project()
         self.root.after(500, self.zoom_all)
 
-    # --- PROJECT MANAGEMENT ---
-    def update_title(self):
-        self.root.title(f"Mind Map Pro - [{self.current_project}]")
+    # --- SETTINGS & RECENT LOGIC ---
+    def load_settings(self):
+        if os.path.exists(self.settings_path):
+            with open(self.settings_path, "r") as f: return json.load(f)
+        return {"last_project": "central.json", "recent": []}
 
+    def save_settings(self):
+        with open(self.settings_path, "w") as f: json.dump(self.settings, f, indent=2)
+
+    def update_recent_list(self, filename):
+        recents = self.settings.get("recent", [])
+        if filename in recents: recents.remove(filename)
+        recents.insert(0, filename)
+        self.settings["recent"] = recents[:5]  # Keep last 5
+        self.settings["last_project"] = filename
+        self.save_settings()
+        self.update_recent_menu()
+
+    def update_recent_menu(self):
+        self.recent_menu.delete(0, "end")
+        for file in self.settings.get("recent", []):
+            self.recent_menu.add_command(label=file, command=lambda f=file: self.switch_project(f))
+
+    def switch_project(self, filename):
+        self.current_project = filename
+        self.load_project()
+        self.update_title()
+        self.update_recent_list(filename)
+        self.zoom_all()
+
+    # --- PROJECT COMMANDS ---
     def new_project(self):
-        name = simpledialog.askstring("New Project", "Enter project name (e.g. WorkPlan):")
+        name = simpledialog.askstring("New Project", "Name:")
         if name:
             if not name.endswith(".json"): name += ".json"
             self.current_project = name
-            self.nodes = {
-                self.root_id: {"text": "New Idea", "children": [], "pos": (0, 0), "expanded": True, "links": []}}
+            self.nodes = {self.root_id: {"text": "New Central Idea", "children": [], "pos": (0, 0), "expanded": True,
+                                         "links": []}}
             self.save_project()
             self.update_title()
+            self.update_recent_list(name)
             self.zoom_all()
 
     def open_project(self):
-        file_path = filedialog.askopenfilename(initialdir=self.projects_dir, title="Select Project",
-                                               filetypes=(("JSON files", "*.json"), ("all files", "*.*")))
-        if file_path:
-            self.current_project = os.path.basename(file_path)
-            self.load_project()
-            self.update_title()
-            self.zoom_all()
+        path = filedialog.askopenfilename(initialdir=self.projects_dir, filetypes=[("JSON", "*.json")])
+        if path: self.switch_project(os.path.basename(path))
 
     def save_as_project(self):
-        file_path = filedialog.asksaveasfilename(initialdir=self.projects_dir, title="Save Project As",
-                                                 defaultextension=".json", filetypes=(("JSON files", "*.json"),))
-        if file_path:
-            self.current_project = os.path.basename(file_path)
+        path = filedialog.asksaveasfilename(initialdir=self.projects_dir, defaultextension=".json")
+        if path:
+            self.current_project = os.path.basename(path)
             self.save_project()
+            self.update_recent_list(self.current_project)
             self.update_title()
-            self.status_var.set(f"Cloned to {self.current_project}")
 
-    # --- CORE LOGIC ---
-    def draw_minimap(self):
-        self.minimap.delete("all")
-        if not self.nodes: return
-        all_x = [n["pos"][0] for n in self.nodes.values()]
-        all_y = [n["pos"][1] for n in self.nodes.values()]
-        min_wx, max_wx = min(all_x) - 400, max(all_x) + 400
-        min_wy, max_wy = min(all_y) - 400, max(all_y) + 400
-        ww, wh = max(1, max_wx - min_wx), max(1, max_wy - min_wy)
-        m_scale = min(self.mini_w / ww, self.mini_h / wh)
-
-        def to_mini(wx, wy):
-            return (wx - min_wx) * m_scale, (wy - min_wy) * m_scale
-
-        for n in self.nodes.values():
-            mx, my = to_mini(*n["pos"])
-            self.minimap.create_oval(mx - 1, my - 1, mx + 1, my + 1, fill="#4834d4", outline="")
-        v_tl = self.to_world(0, 0);
-        v_br = self.to_world(self.canvas.winfo_width(), self.canvas.winfo_height())
-        m_tl, m_br = to_mini(*v_tl), to_mini(*v_br)
-        self.minimap.create_rectangle(m_tl[0], m_tl[1], m_br[0], m_br[1], outline="red", width=1)
-
+    # --- RENDER & NAV ---
     def zoom_all(self):
         if not self.nodes: return
         all_x = [n["pos"][0] for n in self.nodes.values()]
@@ -148,18 +157,6 @@ class MindMapApp:
         self.offset_x = (win_w / 2) - ((min_wx + max_wx) / 2) * self.zoom_level
         self.offset_y = (win_h / 2) - ((min_wy + max_wy) / 2) * self.zoom_level
         self.redraw()
-
-    def do_pan(self, e):
-        self.offset_x += (e.x - self.pan_last_x);
-        self.offset_y += (e.y - self.pan_last_y)
-        self.pan_last_x, self.pan_last_y = e.x, e.y;
-        self.redraw()
-
-    def to_screen(self, wx, wy):
-        return (wx * self.zoom_level) + self.offset_x, (wy * self.zoom_level) + self.offset_y
-
-    def to_world(self, sx, sy):
-        return (sx - self.offset_x) / self.zoom_level, (sy - self.offset_y) / self.zoom_level
 
     def redraw(self):
         self.canvas.delete("all")
@@ -183,19 +180,47 @@ class MindMapApp:
             if not node.get("expanded", True) and node["children"]:
                 self.canvas.create_text(sx + px - 12, sy + py - 8, text=f"+({len(node['children'])})",
                                         font=("Segoe UI", max(5, int(7 * self.zoom_level))), fill="#636e72")
-            if node.get("links"):
-                self.canvas.create_text(sx - px + 12, sy, text="🔗", font=("Segoe UI", max(5, int(8 * self.zoom_level))))
+            if node.get("links"): self.canvas.create_text(sx - px + 12, sy, text="🔗",
+                                                          font=("Segoe UI", max(5, int(8 * self.zoom_level))))
 
         if self.nodes: draw_tree(self.root_id); self.draw_minimap()
 
+    def draw_minimap(self):
+        self.minimap.delete("all")
+        all_x = [n["pos"][0] for n in self.nodes.values()]
+        all_y = [n["pos"][1] for n in self.nodes.values()]
+        min_wx, max_wx = min(all_x) - 500, max(all_x) + 500
+        min_wy, max_wy = min(all_y) - 500, max(all_y) + 500
+        m_scale = min(self.mini_w / max(1, max_wx - min_wx), self.mini_h / max(1, max_wy - min_wy))
+
+        def to_m(wx, wy): return (wx - min_wx) * m_scale, (wy - min_wy) * m_scale
+
+        for n in self.nodes.values():
+            mx, my = to_m(*n["pos"])
+            self.minimap.create_oval(mx - 1, my - 1, mx + 1, my + 1, fill="#4834d4", outline="")
+        v_tl = self.to_world(0, 0);
+        v_br = self.to_world(self.canvas.winfo_width(), self.canvas.winfo_height())
+        m_tl, m_br = to_m(*v_tl), to_m(*v_br)
+        self.minimap.create_rectangle(m_tl[0], m_tl[1], m_br[0], m_br[1], outline="red")
+
+    # --- HELPERS ---
+    def update_title(self):
+        self.root.title(f"Mind Map Pro - [{self.current_project}]")
+
+    def to_screen(self, wx, wy):
+        return (wx * self.zoom_level) + self.offset_x, (wy * self.zoom_level) + self.offset_y
+
+    def to_world(self, sx, sy):
+        return (sx - self.offset_x) / self.zoom_level, (sy - self.offset_y) / self.zoom_level
+
+    def do_pan(self, e):
+        self.offset_x += (e.x - self.pan_last_x);
+        self.offset_y += (e.y - self.pan_last_y)
+        self.pan_last_x, self.pan_last_y = e.x, e.y;
+        self.redraw()
+
     def on_right_press(self, e):
         self.pan_last_x, self.pan_last_y = e.x, e.y; self.show_right_click_menu(e)
-
-    def on_mouse_scroll_v(self, e):
-        self.offset_y += (e.delta / 2); self.redraw()
-
-    def on_mouse_scroll_h(self, e):
-        self.offset_x += (e.delta / 2); self.redraw()
 
     def on_left_click(self, e):
         self.selected = self.find_node_at(e.x, e.y); self.dragging = self.selected
@@ -205,6 +230,12 @@ class MindMapApp:
 
     def on_release(self, e):
         if self.dragging: self.save_project(); self.dragging = None
+
+    def on_mouse_scroll_v(self, e):
+        self.offset_y += (e.delta / 2); self.redraw()
+
+    def on_mouse_scroll_h(self, e):
+        self.offset_x += (e.delta / 2); self.redraw()
 
     def on_double_click(self, e):
         nid = self.find_node_at(e.x, e.y)
@@ -256,21 +287,9 @@ class MindMapApp:
         tk.Button(btn_f, text="Add File",
                   command=lambda: [node.setdefault("links", []).append(filedialog.askopenfilename()), refresh(),
                                    self.save_project(), self.redraw()]).pack(side="left")
-        tk.Button(btn_f, text="Open", command=lambda: self.open_resource(
+        tk.Button(btn_f, text="Open", command=lambda: webbrowser.open(
             tree.item(tree.selection()[0])['values'][0]) if tree.selection() else None).pack(side="left")
         refresh()
-
-    def open_resource(self, path):
-        if path.startswith("http"):
-            webbrowser.open(path)
-        else:
-            self.open_folder(path)
-
-    def open_folder(self, path):
-        if platform.system() == "Windows":
-            os.startfile(path)
-        else:
-            subprocess.call(["open" if platform.system() == "Darwin" else "xdg-open", path])
 
     def edit_node_text(self, nid):
         new = simpledialog.askstring("Edit", "Text:", initialvalue=self.nodes[nid]["text"])
@@ -305,14 +324,15 @@ class MindMapApp:
 
     def show_help(self):
         messagebox.showinfo("Help",
-                            "File Menu: New/Open/Save As\nRight-Drag: Pan view\nMinimap: Bottom-right navigation aid.")
+                            "Auto-Load: Always opens last project.\nFile Menu: Access 'Recent Projects' (last 5).\nRight-Drag: Pan view.")
 
     def show_project_info(self):
         info_win = tk.Toplevel(self.root)
         info_win.title("Project Info")
         info_win.geometry("400x200")
         tk.Label(info_win, text=f"Active: {self.current_project}\nPath: {self.projects_dir}", pady=20).pack()
-        tk.Button(info_win, text="Open Folder", command=lambda: self.open_folder(self.projects_dir)).pack()
+        tk.Button(info_win, text="Open Folder", command=lambda: subprocess.call(
+            ["open", self.projects_dir]) if platform.system() == "Darwin" else os.startfile(self.projects_dir)).pack()
 
     def save_project(self):
         with open(os.path.join(self.projects_dir, self.current_project), "w") as f: json.dump(self.nodes, f, indent=2)
