@@ -11,7 +11,7 @@ class MindMapApp:
     def __init__(self, root):
         self.root = root
 
-        # --- STATE & SETTINGS ---
+        # --- STORAGE & SETTINGS ---
         self.projects_dir = os.path.abspath("projects")
         os.makedirs(self.projects_dir, exist_ok=True)
         self.settings_path = os.path.join(self.projects_dir, "settings.json")
@@ -37,7 +37,7 @@ class MindMapApp:
         self.file_menu.add_separator()
         self.file_menu.add_command(label="Exit", command=self.root.quit)
 
-        # --- UI LAYOUT ---
+        # --- TOOLBAR ---
         self.toolbar = tk.Frame(self.root, bg="#f5f5f7")
         self.toolbar.pack(fill="x", side="top")
         tk.Button(self.toolbar, text="Zoom All", command=self.zoom_all, bg="#d1d8ff",
@@ -59,7 +59,6 @@ class MindMapApp:
                                  highlightbackground="#ccc")
         self.minimap.place(relx=1.0, rely=1.0, x=-20, y=-40, anchor="se")
 
-        # Variables
         self.zoom_level = 1.0
         self.offset_x, self.offset_y = 700, 450
         self.pan_last_x, self.pan_last_y = 0, 0
@@ -80,44 +79,81 @@ class MindMapApp:
         self.load_project()
         self.root.after(500, self.zoom_all)
 
-    # --- UPDATED ZOOM ALL (VISIBLE NODES ONLY) ---
-    def zoom_all(self):
-        if not self.nodes: return
+    # --- RESTORED & ENHANCED RESOURCE MANAGER ---
+    def manage_resources(self, nid):
+        node = self.nodes[nid]
+        manager = tk.Toplevel(self.root)
+        manager.title(f"Resources: {node['text']}")
+        manager.geometry("650x450")
+        manager.transient(self.root)  # Keep on top of main window
 
-        visible_coords = []
+        f = tk.Frame(manager)
+        f.pack(fill="both", expand=True, padx=10, pady=10)
 
-        def get_visible(nid):
-            node = self.nodes[nid]
-            visible_coords.append(node["pos"])
-            if node.get("expanded", True):
-                for cid in node["children"]:
-                    if cid in self.nodes: get_visible(cid)
+        tree = ttk.Treeview(f, columns=("Type", "Path"), show="headings")
+        tree.heading("Type", text="Type")
+        tree.heading("Path", text="Path / URL")
+        tree.column("Type", width=70, anchor="center")
+        tree.column("Path", width=480)
+        tree.pack(side="left", fill="both", expand=True)
 
-        get_visible(self.root_id)
+        vs = tk.Scrollbar(f, command=tree.yview)
+        vs.pack(side="right", fill="y")
+        tree.config(yscrollcommand=vs.set)
 
-        all_x = [p[0] for p in visible_coords]
-        all_y = [p[1] for p in visible_coords]
+        def refresh():
+            for i in tree.get_children(): tree.delete(i)
+            for l in node.get("links", []):
+                r_type = "🌐 Web" if l.startswith("http") else "📄 File"
+                tree.insert("", "end", values=(r_type, l))
 
-        # Calculate bounds with tighter padding
-        min_wx, max_wx = min(all_x) - 100, max(all_x) + 100
-        min_wy, max_wy = min(all_y) - 60, max(all_y) + 60
+        def copy_selected():
+            sel = tree.selection()
+            if sel:
+                val = tree.item(sel[0])['values'][1]
+                self.root.clipboard_clear()
+                self.root.clipboard_append(val)
+                self.status_var.set("Copied to clipboard!")
 
-        world_w = max(max_wx - min_wx, 1)
-        world_h = max(max_wy - min_wy, 1)
+        def open_selected(e=None):
+            sel = tree.selection()
+            if sel: webbrowser.open(tree.item(sel[0])['values'][1])
 
-        win_w = max(self.canvas.winfo_width(), 100)
-        win_h = max(self.canvas.winfo_height(), 100)
+        # Tree Binding
+        tree.bind("<Double-1>", open_selected)
 
-        self.zoom_level = min(win_w / world_w, win_h / world_h, 1.5)
-        self.offset_x = (win_w / 2) - ((min_wx + max_wx) / 2) * self.zoom_level
-        self.offset_y = (win_h / 2) - ((min_wy + max_wy) / 2) * self.zoom_level
+        # Button Rows
+        btn_f = tk.Frame(manager)
+        btn_f.pack(fill="x", pady=10, padx=10)
 
-        self.redraw()
+        tk.Button(btn_f, text="+ Add URL",
+                  command=lambda: [node.setdefault("links", []).append(simpledialog.askstring("URL", "Address:")),
+                                   refresh(), self.save_project(), self.redraw()]).pack(side="left", padx=2)
+        tk.Button(btn_f, text="+ Add File",
+                  command=lambda: [node.setdefault("links", []).append(filedialog.askopenfilename()), refresh(),
+                                   self.save_project(), self.redraw()]).pack(side="left", padx=2)
+        tk.Button(btn_f, text="Copy Path", command=copy_selected).pack(side="left", padx=2)
+        tk.Button(btn_f, text="Open", command=open_selected, bg="#e1f5fe").pack(side="left", padx=2)
 
-    # --- SETTINGS & PERSISTENCE ---
+        # Bottom Row
+        bottom_f = tk.Frame(manager)
+        bottom_f.pack(fill="x", side="bottom", pady=10, padx=10)
+
+        tk.Button(bottom_f, text="Close", width=10, command=manager.destroy).pack(side="right")
+        tk.Button(bottom_f, text="Delete Selected", fg="red",
+                  command=lambda: [node["links"].remove(tree.item(tree.selection()[0])['values'][1]), refresh(),
+                                   self.save_project(), self.redraw()] if tree.selection() else None).pack(side="left")
+
+        refresh()
+
+    # --- SETTINGS & PROJECT OPS ---
     def load_settings(self):
         if os.path.exists(self.settings_path):
-            with open(self.settings_path, "r") as f: return json.load(f)
+            try:
+                with open(self.settings_path, "r") as f:
+                    return json.load(f)
+            except:
+                pass
         return {"last_project": "central.json", "recent": []}
 
     def save_settings(self):
@@ -139,12 +175,11 @@ class MindMapApp:
 
     def switch_project(self, filename):
         self.current_project = filename
-        self.load_project()
-        self.update_title()
-        self.update_recent_list(filename)
+        self.load_project();
+        self.update_title();
+        self.update_recent_list(filename);
         self.zoom_all()
 
-    # --- PROJECT COMMANDS ---
     def new_project(self):
         name = simpledialog.askstring("New", "Project Name:")
         if name:
@@ -152,9 +187,9 @@ class MindMapApp:
             self.current_project = name
             self.nodes = {
                 self.root_id: {"text": "Central Idea", "children": [], "pos": (0, 0), "expanded": True, "links": []}}
-            self.save_project()
-            self.update_recent_list(name)
-            self.update_title()
+            self.save_project();
+            self.update_recent_list(name);
+            self.update_title();
             self.zoom_all()
 
     def open_project(self):
@@ -165,11 +200,32 @@ class MindMapApp:
         path = filedialog.asksaveasfilename(initialdir=self.projects_dir, defaultextension=".json")
         if path:
             self.current_project = os.path.basename(path)
-            self.save_project()
-            self.update_recent_list(self.current_project)
+            self.save_project();
+            self.update_recent_list(self.current_project);
             self.update_title()
 
-    # --- CORE RENDERING ---
+    # --- RENDER ENGINE ---
+    def zoom_all(self):
+        if not self.nodes: return
+        v_coords = []
+
+        def collect_v(nid):
+            v_coords.append(self.nodes[nid]["pos"])
+            if self.nodes[nid].get("expanded", True):
+                for cid in self.nodes[nid]["children"]:
+                    if cid in self.nodes: collect_v(cid)
+
+        collect_v(self.root_id)
+        all_x = [p[0] for p in v_coords];
+        all_y = [p[1] for p in v_coords]
+        min_wx, max_wx = min(all_x) - 100, max(all_x) + 100
+        min_wy, max_wy = min(all_y) - 60, max(all_y) + 60
+        win_w, win_h = max(self.canvas.winfo_width(), 100), max(self.canvas.winfo_height(), 100)
+        self.zoom_level = min(win_w / max(max_wx - min_wx, 1), win_h / max(max_wy - min_wy, 1), 1.5)
+        self.offset_x = (win_w / 2) - ((min_wx + max_wx) / 2) * self.zoom_level
+        self.offset_y = (win_h / 2) - ((min_wy + max_wy) / 2) * self.zoom_level
+        self.redraw()
+
     def to_screen(self, wx, wy):
         return (wx * self.zoom_level) + self.offset_x, (wy * self.zoom_level) + self.offset_y
 
@@ -201,9 +257,7 @@ class MindMapApp:
             if node.get("links"): self.canvas.create_text(sx - px + 12, sy, text="🔗",
                                                           font=("Segoe UI", max(5, int(8 * self.zoom_level))))
 
-        if self.nodes:
-            draw_tree(self.root_id)
-            self.draw_minimap()
+        if self.nodes: draw_tree(self.root_id); self.draw_minimap()
 
     def draw_minimap(self):
         self.minimap.delete("all")
@@ -273,30 +327,6 @@ class MindMapApp:
             menu.add_command(label="Zoom All", command=self.zoom_all)
         menu.post(event.x_root, event.y_root)
 
-    def manage_resources(self, nid):
-        node = self.nodes[nid]
-        manager = tk.Toplevel(self.root)
-        manager.title("Resources")
-        tree = ttk.Treeview(manager, columns=("Path"), show="headings")
-        tree.heading("Path", text="Path / URL");
-        tree.pack(fill="both", expand=True)
-
-        def refresh():
-            for i in tree.get_children(): tree.delete(i)
-            for l in node.get("links", []): tree.insert("", "end", values=(l,))
-
-        refresh()
-        btn_f = tk.Frame(manager);
-        btn_f.pack(fill="x")
-        tk.Button(btn_f, text="Add URL",
-                  command=lambda: [node.setdefault("links", []).append(simpledialog.askstring("URL", "Address:")),
-                                   refresh(), self.save_project(), self.redraw()]).pack(side="left")
-        tk.Button(btn_f, text="Add File",
-                  command=lambda: [node.setdefault("links", []).append(filedialog.askopenfilename()), refresh(),
-                                   self.save_project(), self.redraw()]).pack(side="left")
-        tk.Button(btn_f, text="Open", command=lambda: webbrowser.open(
-            tree.item(tree.selection()[0])['values'][0]) if tree.selection() else None).pack(side="left")
-
     def edit_node_text(self, nid):
         new = simpledialog.askstring("Edit", "Text:", initialvalue=self.nodes[nid]["text"])
         if new: self.nodes[nid]["text"] = new; self.save_project(); self.redraw()
@@ -329,8 +359,12 @@ class MindMapApp:
         self.redraw()
 
     def show_help(self):
-        messagebox.showinfo("Help",
-                            "Auto-Load: Always opens last project.\nZoom All: Now only fits visible (expanded) nodes.\nRecent Projects: Access last 5 via File menu.")
+        h = ("RESOURCES:\n- Double-Click list item to Open.\n"
+             "- Type column icons distinguish Web vs File.\n"
+             "- Use 'Close' button or 'X' to exit resources.\n\n"
+             "SHORTCUTS:\n- Double-Click Node (no links): Edit Text.\n"
+             "- Double-Click Node (with links): Open Resources.")
+        messagebox.showinfo("Help", h)
 
     def show_project_info(self):
         info_win = tk.Toplevel(self.root)
