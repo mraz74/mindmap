@@ -12,66 +12,99 @@ class NoteDialog(tk.Toplevel):
     def __init__(self, parent, initial_data=None):
         super().__init__(parent)
         self.title("Note Editor")
-        self.geometry("500x500")
+        self.geometry("600x550")
         self.result = None
 
-        # Make this window modal
         self.transient(parent)
         self.grab_set()
-
-        # FIX: Ensure closing the window via the "X" button also saves the data
         self.protocol("WM_DELETE_WINDOW", self.save_and_close)
 
-        # Toolbar
-        self.toolbar = tk.Frame(self, bg="#f0f0f0")
-        self.toolbar.pack(side="top", fill="x")
-
-        tk.Button(self.toolbar, text="B", font=("Segoe UI", 9, "bold"), width=3,
-                  command=self.toggle_bold).pack(side="left", padx=2, pady=2)
-        tk.Button(self.toolbar, text="Color", command=self.choose_color).pack(side="left", padx=2)
-        tk.Button(self.toolbar, text="• List", command=self.add_bullet).pack(side="left", padx=2)
-
-        tk.Label(self, text="Title:").pack(anchor="w", padx=10, pady=(10, 0))
+        # Title Entry
+        tk.Label(self, text="Title:", font=("Segoe UI", 9, "bold")).pack(anchor="w", padx=15, pady=(10, 0))
         self.title_var = tk.StringVar(value=initial_data.get("title", "New Note") if initial_data else "New Note")
-        tk.Entry(self, textvariable=self.title_var, font=("Segoe UI", 11)).pack(fill="x", padx=10, pady=5)
+        tk.Entry(self, textvariable=self.title_var, font=("Segoe UI", 12), relief="flat", bg="#f8f9fa").pack(fill="x",
+                                                                                                             padx=15,
+                                                                                                             pady=5)
 
-        tk.Label(self, text="Note content:").pack(anchor="w", padx=10)
-        self.text_area = tk.Text(self, font=("Segoe UI", 10), undo=True)
-        self.text_area.pack(fill="both", expand=True, padx=10, pady=5)
+        # Main Text Box
+        tk.Label(self, text="Content (Ctrl+B: Bold | *: Bullet | 1.: Numbering):", font=("Segoe UI", 8, "italic"),
+                 fg="#7f8c8d").pack(anchor="w", padx=15)
+        self.text_area = tk.Text(self, font=("Segoe UI", 11), undo=True, wrap="word", padx=10, pady=10)
+        self.text_area.pack(fill="both", expand=True, padx=15, pady=5)
+
+        # Tag Configuration
+        self.text_area.tag_configure("bold", font=("Segoe UI", 11, "bold"))
 
         if initial_data:
             self.text_area.insert("1.0", initial_data.get("content", ""))
 
+        # Bindings for formatting
+        self.text_area.bind("<Control-b>", self.toggle_bold)
+        self.text_area.bind("<KeyRelease-space>", self.handle_auto_format)
+        self.text_area.bind("<Return>", self.handle_enter)
+
         # Save Button
         tk.Button(self, text="Save Note", bg="#2ecc71", fg="white", font=("Segoe UI", 10, "bold"),
-                  command=self.save_and_close).pack(pady=10)
+                  command=self.save_and_close, relief="flat", pady=8).pack(pady=10)
 
-    def toggle_bold(self):
+    def toggle_bold(self, event=None):
         try:
-            self.text_area.tag_configure("bold", font=("Segoe UI", 10, "bold"))
-            current_tags = self.text_area.tag_names("sel.first")
-            if "bold" in current_tags:
-                self.text_area.tag_remove("bold", "sel.first", "sel.last")
-            else:
-                self.text_area.tag_add("bold", "sel.first", "sel.last")
+            if self.text_area.tag_ranges("sel"):
+                current_tags = self.text_area.tag_names("sel.first")
+                if "bold" in current_tags:
+                    self.text_area.tag_remove("bold", "sel.first", "sel.last")
+                else:
+                    self.text_area.tag_add("bold", "sel.first", "sel.last")
+            return "break"
         except tk.TclError:
             pass
 
-    def choose_color(self):
-        color = colorchooser.askcolor()[1]
-        if color:
-            tag_name = f"color_{color}"
-            self.text_area.tag_configure(tag_name, foreground=color)
-            try:
-                self.text_area.tag_add(tag_name, "sel.first", "sel.last")
-            except tk.TclError:
-                pass
+    def handle_auto_format(self, event):
+        """ Triggered when Space is pressed to convert symbols to markers """
+        cursor_idx = self.text_area.index("insert")
+        line_start = self.text_area.index("insert linestart")
+        line_content = self.text_area.get(line_start, cursor_idx)
 
-    def add_bullet(self):
-        self.text_area.insert("insert", "\n• ")
+        # Convert '* ' to bullet
+        if line_content == "* ":
+            self.text_area.delete(line_start, cursor_idx)
+            self.text_area.insert(line_start, "• ")
+
+        # '1. ' is handled by handle_enter for continuation logic
+
+    def handle_enter(self, event):
+        """ Triggered when Enter is pressed to continue or end lists """
+        cursor_idx = self.text_area.index("insert")
+        line_start = self.text_area.index("insert linestart")
+        line_content = self.text_area.get(line_start, cursor_idx).strip()
+
+        # Handle Bullets (•)
+        if line_content == "•":
+            # Pressed enter on empty bullet -> Clear bullet and end list
+            self.text_area.delete(line_start, cursor_idx)
+            self.text_area.insert(line_start, "\n")
+            return "break"
+        elif line_content.startswith("•"):
+            # Continue bullet list
+            self.text_area.insert("insert", "\n• ")
+            return "break"
+
+        # Handle Numbering (1. )
+        if ". " in line_content or (line_content.endswith(".") and line_content[:-1].isdigit()):
+            parts = line_content.split(". ", 1)
+            prefix = parts[0]
+            if prefix.isdigit():
+                num = int(prefix)
+                # If line is just "1." and enter is pressed -> Clear and end list
+                if len(line_content.replace(f"{num}.", "").strip()) == 0:
+                    self.text_area.delete(line_start, cursor_idx)
+                    self.text_area.insert(line_start, "\n")
+                else:
+                    # Increment number
+                    self.text_area.insert("insert", f"\n{num + 1}. ")
+                return "break"
 
     def save_and_close(self):
-        # Captures the data into the result variable before destruction
         self.result = {
             "type": "note",
             "title": self.title_var.get().strip() or "Untitled Note",
@@ -185,7 +218,6 @@ class MindMapApp:
         self.load_project()
         self.root.after(500, self.reorganize_and_zoom)
 
-    # --- HOVER LOGIC ---
     def on_mouse_move(self, e):
         nid = self.find_node_at(e.x, e.y)
         if nid != self.last_hover_node:
@@ -211,7 +243,6 @@ class MindMapApp:
                 details.append(f"• {name}")
         self.tooltip.show("\n".join(details), root_x, root_y)
 
-    # --- AUTO-LAYOUT LOGIC ---
     def reorganize_nodes(self):
         if not self.nodes: return
         self.next_y = 0
@@ -384,7 +415,7 @@ class MindMapApp:
         self.redraw()
 
     def show_help(self):
-        h = "Mind Map Pro Help:\n- RESOURCES: Add URLs, Files, or Rich Text Notes.\n- HOVER: See resource details.\n- DRAG: Re-parent nodes."
+        h = "Mind Map Pro Help:\n- RESOURCES: URLs, Files, Notes.\n- KEYBOARD: Ctrl+B (Bold), * (Bullet), 1. (Numbered).\n- ENTER: Auto-continues lists."
         messagebox.showinfo("Help", h)
 
     def load_settings(self):
@@ -483,7 +514,8 @@ class MindMapApp:
             if self.nodes[nid].get("links"):
                 self.manage_resources(nid)
             elif self.nodes[nid]["children"]:
-                self.nodes[nid]["expanded"] = not self.nodes[nid].get("expanded", True); self.reorganize_and_zoom()
+                self.nodes[nid]["expanded"] = not self.nodes[nid].get("expanded", True);
+                self.reorganize_and_zoom()
             else:
                 self.edit_node_text(nid)
 
