@@ -1,5 +1,5 @@
 import tkinter as tk
-from tkinter import simpledialog, messagebox, Menu, filedialog, ttk
+from tkinter import simpledialog, messagebox, Menu, filedialog, ttk, font as tkfont
 import json
 import os
 import webbrowser
@@ -12,6 +12,14 @@ import re
 # --- Add Icon when Node has resources + Number of children inside the block
 # --- when open a window do it in the same screen (in case of multiple PC screens)
 # --- Decide to Highlight a Node (e.g. Mark the user preferred options)
+
+# --- HIGH DPI FIX ---
+try:
+    from ctypes import windll
+
+    windll.shcore.SetProcessDpiAwareness(2)
+except Exception:
+    pass
 
 
 # --- NOTE DIALOG CLASS ---
@@ -65,7 +73,7 @@ class NoteDialog(tk.Toplevel):
             text="Save Note",
             bg="#2ecc71",
             fg="white",
-            font=("Segoe UI", 10, "bold"),
+            font=("Segoe UI", 6, "bold"),
             command=self.save_and_close,
             relief="flat",
             pady=8,
@@ -198,7 +206,9 @@ class MindMapApp:
         self.root.geometry("1400x900")
         self.update_title()
 
-        # --- SEARCH STATE ---
+        # --- FONT / VIEW STATE ---
+        self.base_font_size = 6  # logical node font size
+        # Search state
         self.search_matches = []  # list of (node_id, source_type)
         self.current_match_index = -1
         self.last_search_query = ""
@@ -229,13 +239,13 @@ class MindMapApp:
             text="Reorganize",
             command=self.reorganize_and_zoom,
             bg="#c8e6c9",
-            font=("Segoe UI", 9),
+            font=("Segoe UI", 6),
         ).pack(side="left", padx=5, pady=3)
         tk.Button(
-            self.toolbar, text="Zoom All", command=self.zoom_all, bg="#d1d8ff", font=("Segoe UI", 9)
+            self.toolbar, text="Zoom All", command=self.zoom_all, bg="#d1d8ff", font=("Segoe UI", 6)
         ).pack(side="left", padx=5, pady=3)
-        tk.Button(self.toolbar, text="Expand All", command=self.expand_all).pack(side="left", padx=5, pady=3)
-        tk.Button(self.toolbar, text="Collapse All", command=self.collapse_all).pack(side="left", padx=5, pady=3)
+        tk.Button(self.toolbar, text="Expand All",   font=("Segoe UI", 6), command=self.expand_all).pack(side="left", padx=5, pady=3)
+        tk.Button(self.toolbar, text="Collapse All", font=("Segoe UI", 6), command=self.collapse_all).pack(side="left", padx=5, pady=3)
 
         # --- Search Bar (with navigation) ---
         search_frame = tk.Frame(self.toolbar, bg="#f5f5f7")
@@ -248,10 +258,10 @@ class MindMapApp:
         self.search_entry.bind("<Return>", self.perform_search)
 
         tk.Button(
-            search_frame, text="Go", command=lambda: self.perform_search(None), bg="#ffeaa7"
+            search_frame, text="Go", font=("Segoe UI", 6), command=lambda: self.perform_search(None), bg="#ffeaa7"
         ).pack(side="left")
-        tk.Button(search_frame, text="Prev", command=self.prev_match, bg="#dfe6e9").pack(side="left", padx=3)
-        tk.Button(search_frame, text="Next", command=self.next_match, bg="#dfe6e9").pack(side="left", padx=3)
+        tk.Button(search_frame, text="Prev", font=("Segoe UI", 6), command=self.prev_match, bg="#dfe6e9").pack(side="left", padx=3)
+        tk.Button(search_frame, text="Next", font=("Segoe UI", 6), command=self.next_match, bg="#dfe6e9").pack(side="left", padx=3)
 
         self.search_res_label = tk.Label(
             search_frame, text="", bg="#f5f5f7", font=("Segoe UI", 9, "bold"), fg="#555"
@@ -294,8 +304,27 @@ class MindMapApp:
         self.canvas.bind("<Double-Button-1>", self.on_double_click)
         self.canvas.bind("<Motion>", self.on_mouse_move)
 
+        # Font size shortcuts (Ctrl + / Ctrl -)
+        self.root.bind_all("<Control-plus>", self.increase_font)
+        self.root.bind_all("<Control-minus>", self.decrease_font)
+        # Some keyboards send <Control-equal> for Ctrl+ on main keyboard
+        self.root.bind_all("<Control-equal>", self.increase_font)
+
         self.load_project()
         self.root.after(500, self.reorganize_and_zoom)
+
+    # --- FONT SIZE CONTROL ---
+    def increase_font(self, event=None):
+        self.base_font_size = min(self.base_font_size + 1, 36)
+        # self.redraw()
+        self.reorganize_and_zoom()
+        return "break"
+
+    def decrease_font(self, event=None):
+        self.base_font_size = max(self.base_font_size - 1, 6)
+        # self.redraw()
+        self.reorganize_and_zoom()
+        return "break"
 
     # --- SEARCH FUNCTIONALITY ---
     def perform_search(self, event):
@@ -450,20 +479,42 @@ class MindMapApp:
     def reorganize_nodes(self):
         if not self.nodes:
             return
+
+        # Dynamic gaps based on font/zoom/node size
+        f_size = max(10, self.base_font_size * self.zoom_level * 1.2)  # Scale preview
+        scale_factor = f_size / 10  # Normalize to base 10pt
+        v_gap = max(100, 80 * scale_factor)  # Min 100px vert
+        h_gap = max(350, 260 * scale_factor)  # Min 350px horiz
+
         self.next_y = 0
-        v_gap, h_gap = 80, 220
 
         def layout_recursive(nid, depth):
             node = self.nodes[nid]
             x_pos = depth * h_gap
+
+            # Estimate node height for better vert spacing
+            node_font = tkfont.Font(family="Segoe UI", size=int(f_size), weight="bold")
+            tw = node_font.measure(node["text"])
+            margin = 25 * self.zoom_level
+            px = max(75 * self.zoom_level, (tw / 2) + margin)
+            py = max(25 * self.zoom_level, f_size * 1.1)  # Taller py estimate
+            node_height = py * 2 * 1.4  # Buffer for icons/selection
+
             if not node.get("expanded", True) or not node["children"]:
                 y_pos = self.next_y
                 node["pos"] = [x_pos, y_pos]
-                self.next_y += v_gap
+                self.next_y += node_height + v_gap * 0.3  # Smaller for leaves
                 return y_pos
+
             child_ys = [layout_recursive(cid, depth + 1) for cid in node["children"] if cid in self.nodes]
-            actual_y = (child_ys[0] + child_ys[-1]) / 2 if child_ys else self.next_y
+            actual_y = (min(child_ys) + max(child_ys)) / 2 if child_ys else self.next_y
             node["pos"] = [x_pos, actual_y]
+
+            # Extra vert buffer if children tight
+            child_span = max(child_ys) - min(child_ys) if child_ys else 0
+            if child_span < node_height * 1.5:
+                self.next_y += v_gap * 0.2  # Nudge down
+
             return actual_y
 
         layout_recursive(self.root_id, 0)
@@ -479,7 +530,15 @@ class MindMapApp:
         clicked_node = self.find_node_at(e.x, e.y)
         if clicked_node:
             nx, ny = self.nodes[clicked_node]["pos"]
-            px = 75
+
+            # Measure box width for dynamic hit detection on the "+" button
+            f_size = max(5, int(self.base_font_size * self.zoom_level))
+            node_font = tkfont.Font(family="Segoe UI", size=f_size, weight="bold")
+            tw = node_font.measure(self.nodes[clicked_node]["text"])
+            margin = 25 * self.zoom_level
+            px = (tw / 2) + margin
+            px = max(75 * self.zoom_level, px) / self.zoom_level
+
             if (nx + px - 15) < wx < (nx + px + 15) and (ny - 15) < wy < (ny + 15):
                 self.selected = clicked_node
                 self.add_branch()
@@ -570,10 +629,24 @@ class MindMapApp:
 
     def redraw(self):
         self.canvas.delete("all")
+        f_size = max(5, int(self.base_font_size * self.zoom_level))
+        node_font = tkfont.Font(family="Segoe UI", size=f_size, weight="bold")
+
+        # Calculate actual font height
+        font_height = node_font.metrics("linespace")
 
         def draw_tree(nid, depth=0):
             node = self.nodes[nid]
             sx, sy = self.to_screen(*node["pos"])
+
+            tw = node_font.measure(node["text"])
+            margin_x = 25 * self.zoom_level
+            # Use font_height for vertical padding instead of just f_size
+            margin_y = 10 * self.zoom_level
+
+            px = max(75 * self.zoom_level, (tw / 2) + margin_x)
+            py = (font_height / 2) + margin_y
+
             if node.get("expanded", True):
                 for cid in node["children"]:
                     if cid in self.nodes:
@@ -592,7 +665,7 @@ class MindMapApp:
                             width=max(1, int(2 * self.zoom_level)),
                         )
                         draw_tree(cid, depth + 1)
-            px, py = 75 * self.zoom_level, 20 * self.zoom_level
+
             color = ["#4834d4", "#686de0", "#eb4d4b", "#6ab04c"][depth % 4]
             bw = 4 if nid == self.drop_target else max(1, int(2 * self.zoom_level))
             dash = (5, 5) if nid == self.drop_target else None
@@ -614,7 +687,7 @@ class MindMapApp:
                 sx,
                 sy,
                 text=node["text"],
-                font=("Segoe UI", max(5, int(10 * self.zoom_level)), "bold"),
+                font=node_font,
             )
             br = 8 * self.zoom_level
             self.canvas.create_oval(
@@ -636,11 +709,16 @@ class MindMapApp:
                     fill="#636e72",
                 )
             if node.get("links"):
+                # Fixed: Scale position and font fully with zoom and base_font_size
+                icon_size = max(8, int(self.base_font_size * 0.8 * self.zoom_level))
+                icon_pad = 12 * self.zoom_level  # Scaled padding from box edge
                 self.canvas.create_text(
-                    sx - px + 12,
-                    sy,
+                    sx - px + icon_pad,
+                    sy - py + icon_pad,
                     text="🔗",
-                    font=("Segoe UI", max(5, int(8 * self.zoom_level))),
+                    font=("Segoe UI", icon_size, "bold"),
+                    fill=color,
+                    anchor="center"  # Ensures proper centering at scaled pos
                 )
 
         if self.nodes:
@@ -668,7 +746,7 @@ class MindMapApp:
             return
         ax = [p[0] for p in v]
         ay = [p[1] for p in v]
-        min_wx, max_wx, min_wy, max_wy = min(ax) - 100, max(ax) + 100, min(ay) - 60, max(ay) + 60
+        min_wx, max_wx, min_wy, max_wy = min(ax) - 150, max(ax) + 150, min(ay) - 100, max(ay) + 100
         sw, sh = max(self.canvas.winfo_width(), 100), max(self.canvas.winfo_height(), 100)
         self.zoom_level = min(sw / max(max_wx - min_wx, 1), sh / max(max_wy - min_wy, 1), 1.5)
         self.offset_x = (sw / 2) - ((min_wx + max_wx) / 2) * self.zoom_level
@@ -693,7 +771,10 @@ class MindMapApp:
             "- Navigation: Use 'Prev' and 'Next' to cycle through matching nodes.\n\n"
             "📝 RESOURCES & NOTES\n"
             "- Manage: Right-click > Resources or double-click a node with a 🔗 icon.\n"
-            "- Note Formatting: Inside notes, use Ctrl+B (Bold), '*' (Bullet), or '1.' (Numbered)."
+            "- Note Formatting: Inside notes, use Ctrl+B (Bold), '*' (Bullet), or '1.' (Numbered).\n\n"
+            "🔤 FONT\n"
+            "- Increase node font: Ctrl +\n"
+            "- Decrease node font: Ctrl -"
         )
         messagebox.showinfo("Help", h)
 
@@ -788,11 +869,23 @@ class MindMapApp:
 
     def find_node_at(self, x, y, exclude=None):
         wx, wy = self.to_world(x, y)
+        f_size = max(5, int(self.base_font_size * self.zoom_level))
+        node_font = tkfont.Font(family="Segoe UI", size=f_size, weight="bold")
+        font_height = node_font.metrics("linespace")
+
         for nid, node in self.nodes.items():
-            if nid == exclude:
-                continue
+            if nid == exclude: continue
             nx, ny = node["pos"]
-            if nx - 90 < wx < nx + 90 and ny - 35 < wy < ny + 35:
+
+            tw = node_font.measure(node["text"])
+            margin_x = 25 * self.zoom_level
+            margin_y = 10 * self.zoom_level
+
+            # Convert screen-space dimensions back to world-space for comparison
+            px = max(75 * self.zoom_level, (tw / 2) + margin_x) / self.zoom_level
+            py = ((font_height / 2) + margin_y) / self.zoom_level
+
+            if nx - px < wx < nx + px and ny - py < wy < ny + py:
                 return nid
         return None
 
@@ -825,98 +918,147 @@ class MindMapApp:
             else:
                 self.edit_node_text(nid)
 
+
+
+
     def manage_resources(self, nid):
         node = self.nodes[nid]
+
         manager = tk.Toplevel(self.root)
         manager.title(f"Resources: {node['text']}")
-        manager.geometry("650x450")
-        f = tk.Frame(manager)
-        f.pack(fill="both", expand=True, padx=10, pady=10)
-        tree = ttk.Treeview(f, columns=("Type", "Path"), show="headings")
+        manager.geometry("720x520")
+        manager.minsize(660, 440)
+        manager.transient(self.root)
+        manager.grab_set()
+
+        # ---- CRITICAL WINDOWS DPI FIX ----
+        style = ttk.Style(manager)
+        try:
+            style.theme_use("vista")   # forces correct header metrics on Windows
+        except tk.TclError:
+            pass
+
+        style.configure(
+            "Treeview",
+            rowheight=30,
+            font=("Segoe UI", 6)
+        )
+        style.configure(
+            "Treeview.Heading",
+            font=("Segoe UI", 6, "bold"),
+            padding=(10, 6)
+        )
+
+        manager.columnconfigure(0, weight=1)
+        manager.rowconfigure(0, weight=1)
+        manager.rowconfigure(1, weight=0)
+
+        frame = tk.Frame(manager)
+        frame.grid(row=0, column=0, sticky="nsew", padx=10, pady=10)
+        frame.columnconfigure(0, weight=1)
+        frame.rowconfigure(0, weight=1)
+
+        tree = ttk.Treeview(
+            frame,
+            columns=("Type", "Path"),
+            show="headings",
+            selectmode="browse"
+        )
+
         tree.heading("Type", text="Type")
         tree.heading("Path", text="Path / URL / Title")
-        tree.column("Type", width=80)
-        tree.column("Path", width=470)
-        tree.pack(side="left", fill="both", expand=True)
-        vs = tk.Scrollbar(f, command=tree.yview)
-        vs.pack(side="right", fill="y")
-        tree.config(yscrollcommand=vs.set)
+
+        tree.column("Type", width=130, anchor="w", stretch=False)
+        tree.column("Path", width=520, anchor="w", stretch=True)
+
+        tree.grid(row=0, column=0, sticky="nsew")
+
+        scrollbar = ttk.Scrollbar(frame, orient="vertical", command=tree.yview)
+        scrollbar.grid(row=0, column=1, sticky="ns")
+        tree.configure(yscrollcommand=scrollbar.set)
+
+        btn_frame = tk.Frame(manager)
+        btn_frame.grid(row=1, column=0, sticky="ew", padx=10, pady=(0, 12))
 
         def refresh():
-            for i in tree.get_children():
-                tree.delete(i)
+            tree.delete(*tree.get_children())
             for idx, l in enumerate(node.get("links", [])):
                 if isinstance(l, dict) and l.get("type") == "note":
-                    tree.insert("", "end", values=("📝 Note", l.get("title", "Untitled")), iid=str(idx))
+                    tree.insert("", "end", iid=str(idx),
+                                values=("📝 Note", l.get("title", "Untitled")))
                 else:
-                    r_type = "🌐 Web" if str(l).startswith("http") else "📄 File"
-                    tree.insert("", "end", values=(r_type, l), iid=str(idx))
+                    rtype = "🌐 Web" if str(l).startswith("http") else "📄 File"
+                    tree.insert("", "end", iid=str(idx), values=(rtype, l))
 
-        def open_selected(e=None):
+        def open_selected(event=None):
             sel = tree.selection()
             if not sel:
                 return
             idx = int(sel[0])
             item = node["links"][idx]
+
             if isinstance(item, dict) and item.get("type") == "note":
-                dialog = NoteDialog(manager, initial_data=item)
-                manager.wait_window(dialog)
-                if dialog.result:
-                    node["links"][idx] = dialog.result
+                dlg = NoteDialog(manager, initial_data=item)
+                manager.wait_window(dlg)
+                if dlg.result:
+                    node["links"][idx] = dlg.result
                     self.save_project()
                     refresh()
             else:
                 webbrowser.open(item)
 
         tree.bind("<Double-1>", open_selected)
-        btn_f = tk.Frame(manager)
-        btn_f.pack(fill="x", pady=10, padx=10)
 
         tk.Button(
-            btn_f,
+            btn_frame,
             text="+ URL",
-            command=lambda: [
+            font=("Segoe UI", 6),
+            command=lambda: (
                 (u := simpledialog.askstring("URL", "Address:")) and node["links"].append(u),
                 refresh(),
                 self.save_project(),
                 self.redraw(),
-            ],
-        ).pack(side="left", padx=2)
+            ),
+        ).pack(side="left", padx=4)
 
         tk.Button(
-            btn_f,
+            btn_frame,
             text="+ File",
-            command=lambda: [
+            font=("Segoe UI", 6),
+            command=lambda: (
                 (f := filedialog.askopenfilename()) and node["links"].append(f),
                 refresh(),
                 self.save_project(),
                 self.redraw(),
-            ],
-        ).pack(side="left", padx=2)
+            ),
+        ).pack(side="left", padx=4)
 
-        def add_note_ui():
-            d = NoteDialog(manager)
-            manager.wait_window(d)
-            if d.result:
-                node["links"].append(d.result)
-                self.save_project()
+        def add_note():
+            dlg = NoteDialog(manager)
+            manager.wait_window(dlg)
+            if dlg.result:
+                node["links"].append(dlg.result)
                 refresh()
+                self.save_project()
                 self.redraw()
 
-        tk.Button(btn_f, text="+ Note", bg="#d1d8ff", command=add_note_ui).pack(side="left", padx=2)
+        tk.Button(btn_frame, text="+ Note", font=("Segoe UI", 6), bg="#d1d8ff", command=add_note).pack(side="left", padx=4)
 
         tk.Button(
-            btn_f,
+            btn_frame,
             text="Delete",
             fg="red",
-            command=lambda: [
+            font = ("Segoe UI", 6),
+            command=lambda: (
                 node["links"].pop(int(tree.selection()[0])) if tree.selection() else None,
                 refresh(),
                 self.save_project(),
                 self.redraw(),
-            ],
-        ).pack(side="right")
+            ),
+        ).pack(side="left")
+
         refresh()
+        manager.update_idletasks()
 
     def edit_node_text(self, nid):
         new = simpledialog.askstring("Edit", "Text:", initialvalue=self.nodes[nid]["text"])
@@ -963,5 +1105,10 @@ class MindMapApp:
 
 if __name__ == "__main__":
     root = tk.Tk()
+
+    # ---- FORCE TK SCALING (CRITICAL) ----
+    scaling = root.winfo_fpixels('1i') / 72
+    root.tk.call('tk', 'scaling', scaling)
+
     app = MindMapApp(root)
     root.mainloop()
