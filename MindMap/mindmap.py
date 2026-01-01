@@ -5,6 +5,14 @@ import os
 import webbrowser
 import re
 
+# --- TODO  ---
+# --- Add copy paste of pictures (Saved as files in the DB folder)
+# --- Move delete button of Resources window to the left and add a close button in the right
+# --- Add sort option of nodes children order by name
+# --- Add Icon when Node has resources + Number of children inside the block
+# --- when open a window do it in the same screen (in case of multiple PC screens)
+# --- Decide to Highlight a Node (e.g. Mark the user preferred options)
+
 
 # --- NOTE DIALOG CLASS ---
 class NoteDialog(tk.Toplevel):
@@ -669,12 +677,23 @@ class MindMapApp:
 
     def show_help(self):
         h = (
-            "Mind Map Pro Help:\n\n"
-            "- SEARCH: Type in the top bar and press Enter/Go to find nodes or notes.\n"
-            "- Use Prev/Next to move between matches.\n"
-            "- DRAG & DROP: Drag a node onto another to re-parent it.\n"
-            "- RESOURCES: Right-click > Resources (URLs, Files, Notes).\n"
-            "- FORMATTING: In Notes, use Ctrl+B (Bold), * (Bullet), 1. (Numbered)."
+            "Mind Map Pro - Quick Reference\n\n"
+            "🖱️ NAVIGATION\n"
+            "- Pan: Right-click and drag the background to move.\n"
+            "- Zoom: Use the Mouse Wheel to zoom in/out.\n"
+            "- Box Zoom: Left-click and drag a box to zoom into an area.\n"
+            "- Reset View: Drag a box backwards (bottom-right to top-left) or click 'Zoom All'.\n\n"
+            "🌿 NODES & STRUCTURE\n"
+            "- Add Branch: Click the (+) icon on a node or use Right-click > Add Branch.\n"
+            "- Reparent: Drag a node and drop it onto another to change its parent.\n"
+            "- Expand/Collapse: Double-click a node with children to toggle visibility.\n"
+            "- Edit Text: Double-click a node (without resources) or use Right-click > Edit.\n\n"
+            "🔍 SEARCH\n"
+            "- Deep Search: Type in the search bar to find text in Titles, Resource paths, or Note content.\n"
+            "- Navigation: Use 'Prev' and 'Next' to cycle through matching nodes.\n\n"
+            "📝 RESOURCES & NOTES\n"
+            "- Manage: Right-click > Resources or double-click a node with a 🔗 icon.\n"
+            "- Note Formatting: Inside notes, use Ctrl+B (Bold), '*' (Bullet), or '1.' (Numbered)."
         )
         messagebox.showinfo("Help", h)
 
