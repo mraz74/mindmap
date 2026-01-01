@@ -7,6 +7,8 @@ import re
 
 # --- TODO  ---
 # --- Add copy paste of pictures (Saved as files in the DB folder)
+# --- Add an option to add a excel table to resources
+# --- Add todo list to project or resources. Add option to see all todo of all nodes
 # --- Move delete button of Resources window to the left and add a close button in the right
 # --- Add sort option of nodes children order by name
 # --- Add Icon when Node has resources + Number of children inside the block
@@ -800,7 +802,7 @@ class MindMapApp:
     def update_recent_menu(self):
         self.recent_menu.delete(0, "end")
         for f in self.settings.get("recent", []):
-            self.recent_menu.add_command(label=f, command=lambda f=f: self.switch_project(f))
+            self.recent_menu.add_command(label=f, command=lambda : self.switch_project(f))
 
     def switch_project(self, filename):
         self.current_project = filename
