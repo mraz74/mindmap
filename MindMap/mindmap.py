@@ -1,9 +1,21 @@
 import tkinter as tk
-from tkinter import simpledialog, messagebox, Menu, filedialog, ttk, font as tkfont
+from tkinter import simpledialog, messagebox, Menu, filedialog, ttk, font as tkfont, colorchooser
 import json
 import os
 import webbrowser
 import re
+import io
+import tempfile
+
+# Pillow is required for exporting to PNG/PDF from PostScript.
+try:
+    from PIL import Image, ImageOps
+    PIL_AVAILABLE = True
+except Exception:
+    PIL_AVAILABLE = False
+
+# Default node fill color
+DEFAULT_NODE_COLOR = "#ffffff"
 
 # --- TODO  ---
 # --- Add copy paste of pictures (Saved as files in the DB folder)
@@ -47,14 +59,14 @@ class NoteDialog(tk.Toplevel):
         tk.Label(
             self,
             text="Content (Ctrl+B: Bold | *: Bullet | 1.: Numbering | Links auto-detected):",
-            font=("Segoe UI", 8, "italic"),
+            font=("Segoe UI", 6, "italic"),
             fg="#7f8c8d",
         ).pack(anchor="w", padx=15)
-        self.text_area = tk.Text(self, font=("Segoe UI", 11), undo=True, wrap="word", padx=10, pady=10)
+        self.text_area = tk.Text(self, font=("Segoe UI", 6), undo=True, wrap="word", padx=10, pady=10)
         self.text_area.pack(fill="both", expand=True, padx=15, pady=5)
 
         # Tag Configuration
-        self.text_area.tag_configure("bold", font=("Segoe UI", 11, "bold"))
+        self.text_area.tag_configure("bold", font=("Segoe UI", 6, "bold"))
         self.text_area.tag_configure("link", foreground="blue", underline=True)
 
         # Bindings
@@ -182,7 +194,7 @@ class NodeTooltip:
             foreground="white",
             relief="flat",
             borderwidth=1,
-            font=("Segoe UI", 9),
+            font=("Segoe UI", 6),
             padx=8,
             pady=5,
         ).pack()
@@ -228,6 +240,11 @@ class MindMapApp:
         self.update_recent_menu()
         self.file_menu.add_separator()
         self.file_menu.add_command(label="Save As...", command=self.save_as_project)
+
+        # --- EXPORT OPTIONS ---
+        self.file_menu.add_command(label="Export as PNG...", command=self.export_as_png)
+        self.file_menu.add_command(label="Export as PDF...", command=self.export_as_pdf)
+
         self.file_menu.add_separator()
         self.file_menu.add_command(label="Exit", command=self.root.quit)
 
@@ -252,7 +269,7 @@ class MindMapApp:
         # --- Search Bar (with navigation) ---
         search_frame = tk.Frame(self.toolbar, bg="#f5f5f7")
         search_frame.pack(side="left", padx=20)
-        tk.Label(search_frame, text="Search:", bg="#f5f5f7").pack(side="left")
+        tk.Label(search_frame, text="Search:", font=("Segoe UI", 6), bg="#f5f5f7").pack(side="left")
 
         self.search_var = tk.StringVar()
         self.search_entry = tk.Entry(search_frame, textvariable=self.search_var, width=25)
@@ -266,12 +283,12 @@ class MindMapApp:
         tk.Button(search_frame, text="Next", font=("Segoe UI", 6), command=self.next_match, bg="#dfe6e9").pack(side="left", padx=3)
 
         self.search_res_label = tk.Label(
-            search_frame, text="", bg="#f5f5f7", font=("Segoe UI", 9, "bold"), fg="#555"
+            search_frame, text="", bg="#f5f5f7", font=("Segoe UI", 6, "bold"), fg="#555"
         )
         self.search_res_label.pack(side="left", padx=10)
 
         # Right side buttons
-        tk.Button(self.toolbar, text="Help", command=self.show_help).pack(side="right", padx=10, pady=3)
+        tk.Button(self.toolbar, text="Help", font=("Segoe UI", 6), command=self.show_help).pack(side="right", padx=10, pady=3)
 
         self.status_var = tk.StringVar(value="Ready")
         tk.Label(
@@ -672,6 +689,11 @@ class MindMapApp:
             bw = 4 if nid == self.drop_target else max(1, int(2 * self.zoom_level))
             dash = (5, 5) if nid == self.drop_target else None
 
+            # Node fill color (per-node)
+            node_color = node.get("color", DEFAULT_NODE_COLOR)
+            # Choose a readable text color (black/white) based on fill luminance
+            text_color = self._choose_text_color(node_color)
+
             if nid == self.selected:
                 self.canvas.create_oval(
                     sx - px - 5,
@@ -683,13 +705,14 @@ class MindMapApp:
                 )
 
             self.canvas.create_rectangle(
-                sx - px, sy - py, sx + px, sy + py, fill="white", outline=color, width=bw, dash=dash
+                sx - px, sy - py, sx + px, sy + py, fill=node_color, outline=color, width=bw, dash=dash
             )
             self.canvas.create_text(
                 sx,
                 sy,
                 text=node["text"],
                 font=node_font,
+                fill=text_color,
             )
             br = 8 * self.zoom_level
             self.canvas.create_oval(
@@ -725,6 +748,24 @@ class MindMapApp:
 
         if self.nodes:
             draw_tree(self.root_id)
+
+    def _choose_text_color(self, hex_color):
+        """
+        Return 'black' or 'white' depending on luminance for readability.
+        """
+        try:
+            h = hex_color.lstrip("#")
+            if len(h) == 3:
+                # shorthand e.g. "abc" => "aabbcc"
+                h = "".join([c * 2 for c in h])
+            r = int(h[0:2], 16)
+            g = int(h[2:4], 16)
+            b = int(h[4:6], 16)
+        except Exception:
+            return "black"
+        # perceived luminance formula
+        lum = 0.2126 * r + 0.7152 * g + 0.0722 * b
+        return "black" if lum > 160 else "white"
 
     def to_screen(self, wx, wy):
         return (wx * self.zoom_level) + self.offset_x, (wy * self.zoom_level) + self.offset_y
@@ -767,7 +808,8 @@ class MindMapApp:
             "- Add Branch: Click the (+) icon on a node or use Right-click > Add Branch.\n"
             "- Reparent: Drag a node and drop it onto another to change its parent.\n"
             "- Expand/Collapse: Double-click a node with children to toggle visibility.\n"
-            "- Edit Text: Double-click a node (without resources) or use Right-click > Edit.\n\n"
+            "- Edit Text: Double-click a node (without resources) or use Right-click > Edit.\n"
+            "- Set Color: Right-click a node and choose 'Set Color...' to change its fill color.\n\n"
             "🔍 SEARCH\n"
             "- Deep Search: Type in the search bar to find text in Titles, Resource paths, or Note content.\n"
             "- Navigation: Use 'Prev' and 'Next' to cycle through matching nodes.\n\n"
@@ -776,7 +818,10 @@ class MindMapApp:
             "- Note Formatting: Inside notes, use Ctrl+B (Bold), '*' (Bullet), or '1.' (Numbered).\n\n"
             "🔤 FONT\n"
             "- Increase node font: Ctrl +\n"
-            "- Decrease node font: Ctrl -"
+            "- Decrease node font: Ctrl -\n\n"
+            "🖨️ EXPORT\n"
+            "- Export as PNG or PDF via File > Export as PNG... / Export as PDF...\n"
+            "- Requires Pillow and Ghostscript (for PostScript conversion) to be installed."
         )
         messagebox.showinfo("Help", h)
 
@@ -824,6 +869,7 @@ class MindMapApp:
                     "pos": (0, 0),
                     "expanded": True,
                     "links": [],
+                    "color": DEFAULT_NODE_COLOR,
                 }
             }
             self.save_project()
@@ -858,6 +904,7 @@ class MindMapApp:
                 self.nodes = json.load(f)
             for n in self.nodes.values():
                 n.setdefault("links", [])
+                n.setdefault("color", DEFAULT_NODE_COLOR)
         else:
             self.nodes = {
                 self.root_id: {
@@ -866,6 +913,7 @@ class MindMapApp:
                     "pos": (0, 0),
                     "expanded": True,
                     "links": [],
+                    "color": DEFAULT_NODE_COLOR,
                 }
             }
 
@@ -903,6 +951,8 @@ class MindMapApp:
             menu.add_command(label="Resources...", command=lambda: self.manage_resources(self.selected))
             menu.add_command(label="Edit Text", command=lambda: self.edit_node_text(self.selected))
             menu.add_command(label="Add Branch", command=self.add_branch)
+            menu.add_command(label="Set Color...", command=lambda nid=self.selected: self.set_node_color(nid))
+            menu.add_command(label="Clear Color", command=lambda nid=self.selected: self.clear_node_color(nid))
             menu.add_command(label="Delete", command=self.delete_node, foreground="red")
         else:
             menu.add_command(label="Reorganize & Zoom", command=self.reorganize_and_zoom)
@@ -1081,6 +1131,7 @@ class MindMapApp:
                 "pos": [0, 0],
                 "expanded": True,
                 "links": [],
+                "color": DEFAULT_NODE_COLOR,
             }
             self.nodes[self.selected]["children"].append(cid)
             self.reorganize_and_zoom()
@@ -1103,6 +1154,127 @@ class MindMapApp:
             if nid != self.root_id:
                 n["expanded"] = False
         self.reorganize_and_zoom()
+
+    # --- EXPORT / PRINTING HELPERS ---
+    def _export_canvas_postscript(self, scale=1):
+        """
+        Returns PostScript bytes for the current canvas.
+        scale: multiplier to increase PS resolution (best-effort).
+        """
+        # Ensure the canvas has the latest drawing
+        self.canvas.update_idletasks()
+        width = int(self.canvas.winfo_width() * scale)
+        height = int(self.canvas.winfo_height() * scale)
+        # Use postscript export. Note: PostScript is generated at 72 DPI, scaling helps resolution.
+        ps = self.canvas.postscript(colormode="color", width=width, height=height, pagewidth=width, pageheight=height)
+        return ps.encode("utf-8")
+
+    def _postscript_to_image(self, ps_bytes):
+        """
+        Convert PostScript bytes to a PIL Image.
+        Requires Pillow + Ghostscript available in the environment.
+        """
+        if not PIL_AVAILABLE:
+            raise RuntimeError("Pillow is not installed. Install it with 'pip install Pillow' and ensure Ghostscript is available.")
+
+        # Write to temporary .ps file because PIL expects a file-like EPS/PS with correct header
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".ps") as tf:
+            tf.write(ps_bytes)
+            tf.flush()
+            temp_ps = tf.name
+
+        try:
+            # Pillow will invoke Ghostscript for PostScript/EPS conversions.
+            img = Image.open(temp_ps)
+            # Force load (runs conversion)
+            img.load()
+            # Convert to RGBA to make background handling easier
+            if img.mode != "RGBA":
+                img = img.convert("RGBA")
+            # Add white background behind any transparency
+            bg = Image.new("RGBA", img.size, "WHITE")
+            bg.paste(img, mask=img.split()[3] if len(img.split()) >= 4 else None)
+            final = bg.convert("RGB")
+            return final
+        finally:
+            try:
+                os.unlink(temp_ps)
+            except Exception:
+                pass
+
+    def export_as_png(self):
+        """
+        Export the visible canvas to a PNG file chosen by the user.
+        """
+        if not PIL_AVAILABLE:
+            messagebox.showerror("Export failed", "Export requires Pillow. Install with 'pip install Pillow' and Ghostscript available on PATH.")
+            return
+
+        # Ask for filename
+        out_path = filedialog.asksaveasfilename(title="Export as PNG", defaultextension=".png", filetypes=[("PNG", "*.png")])
+        if not out_path:
+            return
+
+        try:
+            # Try a higher scale for better quality
+            scale = 2
+            ps_bytes = self._export_canvas_postscript(scale=scale)
+            img = self._postscript_to_image(ps_bytes)
+            # If we scaled, resize down to expected pixel dimensions for cleaner rendering (optional)
+            # Save PNG
+            img.save(out_path, "PNG")
+            messagebox.showinfo("Export complete", f"Canvas exported as PNG:\n{out_path}")
+        except Exception as ex:
+            messagebox.showerror("Export failed", f"Could not export canvas to PNG:\n{ex}")
+
+    def export_as_pdf(self):
+        """
+        Export the visible canvas to a PDF file chosen by the user.
+        """
+        if not PIL_AVAILABLE:
+            messagebox.showerror("Export failed", "Export requires Pillow. Install with 'pip install Pillow' and Ghostscript available on PATH.")
+            return
+
+        out_path = filedialog.asksaveasfilename(title="Export as PDF", defaultextension=".pdf", filetypes=[("PDF", "*.pdf")])
+        if not out_path:
+            return
+
+        try:
+            scale = 2
+            ps_bytes = self._export_canvas_postscript(scale=scale)
+            img = self._postscript_to_image(ps_bytes)
+            # Save as PDF (RGB)
+            img.save(out_path, "PDF", resolution=150.0)
+            messagebox.showinfo("Export complete", f"Canvas exported as PDF:\n{out_path}")
+        except Exception as ex:
+            messagebox.showerror("Export failed", f"Could not export canvas to PDF:\n{ex}")
+
+    # --- Node color helpers ---
+    def set_node_color(self, nid):
+        """
+        Open a color chooser to set a node's fill color.
+        """
+        if nid not in self.nodes:
+            return
+        initial = self.nodes[nid].get("color", DEFAULT_NODE_COLOR)
+        # askcolor returns ( (r,g,b), "#rrggbb" ) or (None, None) if canceled
+        rgb, hex_color = colorchooser.askcolor(color=initial, title="Choose node color")
+        if hex_color is None:
+            return
+        self.nodes[nid]["color"] = hex_color
+        self.save_project()
+        self.redraw()
+
+    def clear_node_color(self, nid):
+        """
+        Reset node color to default.
+        """
+        if nid not in self.nodes:
+            return
+        # Keep the key for compatibility, but set to default
+        self.nodes[nid]["color"] = DEFAULT_NODE_COLOR
+        self.save_project()
+        self.redraw()
 
 
 if __name__ == "__main__":
