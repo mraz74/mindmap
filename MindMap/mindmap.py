@@ -1,3 +1,4 @@
+# (Full file contents)
 import tkinter as tk
 from tkinter import simpledialog, messagebox, Menu, filedialog, ttk, font as tkfont, colorchooser
 import json
@@ -6,6 +7,7 @@ import webbrowser
 import re
 import io
 import tempfile
+import datetime as dt
 
 # Pillow is required for exporting to PNG/PDF from PostScript.
 try:
@@ -33,6 +35,28 @@ try:
     windll.shcore.SetProcessDpiAwareness(2)
 except Exception:
     pass
+
+
+def iso_now():
+    """Return current UTC time as ISO 8601 string (no timezone suffix)."""
+    return dt.datetime.utcnow().replace(microsecond=0).isoformat()
+
+
+def parse_iso(s):
+    """Parse ISO 8601 produced by iso_now(); fall back to epoch if invalid."""
+    if not s:
+        return dt.datetime.fromtimestamp(0)
+    if isinstance(s, (int, float)):
+        return dt.datetime.utcfromtimestamp(s)
+    try:
+        # fromisoformat handles the format we create (YYYY-MM-DDTHH:MM:SS)
+        return dt.datetime.fromisoformat(s)
+    except Exception:
+        try:
+            # try a fallback parse
+            return dt.datetime.strptime(s, "%Y-%m-%dT%H:%M:%S")
+        except Exception:
+            return dt.datetime.fromtimestamp(0)
 
 
 # --- NOTE DIALOG CLASS ---
@@ -247,7 +271,7 @@ class MindMapApp:
         self.file_menu.add_separator()
         self.file_menu.add_command(label="Exit", command=self.root.quit)
 
-        # --- TOOLBAR ---
+        # --- TOP TOOLBAR ---
         self.toolbar = tk.Frame(self.root, bg="#f5f5f7")
         self.toolbar.pack(fill="x", side="top")
 
@@ -286,8 +310,29 @@ class MindMapApp:
         )
         self.search_res_label.pack(side="left", padx=10)
 
-        # Right side buttons
+        # --- Sort control ---
+        sort_frame = tk.Frame(self.toolbar, bg="#f5f5f7")
+        sort_frame.pack(side="left", padx=10)
+        tk.Label(sort_frame, text="Sort:", font=("Segoe UI", 6), bg="#f5f5f7").pack(side="left")
+        sort_options = ["None", "Name ↑", "Name ↓", "Date ↑", "Date ↓"]
+        self.sort_var = tk.StringVar(value=self.settings.get("auto_sort", "None"))
+        self.sort_menu = tk.OptionMenu(sort_frame, self.sort_var, *sort_options, command=self.set_sort_mode)
+        self.sort_menu.config(font=("Segoe UI", 6))
+        self.sort_menu.pack(side="left", padx=(6, 0))
+
+        # Right side help
         tk.Button(self.toolbar, text="Help", font=("Segoe UI", 6), command=self.show_help).pack(side="right", padx=10, pady=3)
+
+        # --- RIGHT VERTICAL TOOLBAR (icons for order) ---
+        # This holds move up/down and will be visible on the right side of the window (vertical)
+        self.right_toolbar = tk.Frame(self.root, bg="#f5f5f7", relief="flat")
+        self.right_toolbar.pack(side="right", fill="y", padx=(0,6), pady=6)
+
+        # Use Unicode arrows as icons
+        self.icon_up = tk.Button(self.right_toolbar, text="▲", font=("Segoe UI", 14), width=3, command=self.move_selected_up)
+        self.icon_up.pack(pady=(10, 6))
+        self.icon_down = tk.Button(self.right_toolbar, text="▼", font=("Segoe UI", 14), width=3, command=self.move_selected_down)
+        self.icon_down.pack(pady=(0, 10))
 
         self.status_var = tk.StringVar(value="Ready")
         tk.Label(
@@ -329,6 +374,7 @@ class MindMapApp:
         self.root.bind_all("<Control-equal>", self.increase_font)
 
         self.load_project()
+        self.update_toolbar_buttons()
         self.root.after(500, self.reorganize_and_zoom)
 
     # --- FONT SIZE CONTROL ---
@@ -343,6 +389,73 @@ class MindMapApp:
         # self.redraw()
         self.reorganize_and_zoom()
         return "break"
+
+    # --- SORTING & MANUAL ORDER PERSISTENCE ---
+    def save_manual_orders(self):
+        """Store current children order into 'manual_children' for each node."""
+        for nid, node in self.nodes.items():
+            if "children" in node:
+                node["manual_children"] = list(node["children"])
+
+    def restore_manual_orders(self):
+        """Restore children order from 'manual_children' when available."""
+        for nid, node in self.nodes.items():
+            manual = node.get("manual_children")
+            if manual:
+                # Keep only children that still exist, preserve any new children appended at end
+                restored = [c for c in manual if c in node.get("children", []) and c in self.nodes]
+                # append any current children that were not present in manual list
+                for c in node.get("children", []):
+                    if c not in restored:
+                        restored.append(c)
+                node["children"] = restored
+
+    def set_sort_mode(self, mode):
+        """
+        When switching modes:
+          - If leaving 'None', save the manual order so we can restore it later.
+          - If switching to 'None', restore previously saved manual order (if present).
+          - If switching to a sort mode, apply sorting.
+        """
+        old = self.settings.get("auto_sort", "None")
+        # if we're going from None -> non-None, save manual orders
+        if old == "None" and mode != "None":
+            self.save_manual_orders()
+        # if going to None, restore previously-saved manual order (if any)
+        if mode == "None":
+            self.restore_manual_orders()
+        self.settings["auto_sort"] = mode
+        self.save_settings()
+        if mode != "None":
+            self.apply_sorting()
+        self.update_toolbar_buttons()
+        self.reorganize_and_zoom()
+
+    def apply_sorting(self):
+        """
+        Sort every node's children in-place according to the selected sort mode.
+        Modes: None, Name ↑, Name ↓, Date ↑, Date ↓
+        Date sorting uses node['modified'] (ISO string). Missing modified treated as epoch.
+        """
+        mode = self.settings.get("auto_sort", "None")
+        for nid, node in self.nodes.items():
+            children = node.get("children", [])
+            if not children:
+                continue
+            if mode == "None":
+                continue
+            if mode.startswith("Name"):
+                reverse = mode.endswith("↓")
+                try:
+                    children.sort(key=lambda c: self.nodes.get(c, {}).get("text", "").lower(), reverse=reverse)
+                except Exception:
+                    pass
+            elif mode.startswith("Date"):
+                reverse = mode.endswith("↓")
+                try:
+                    children.sort(key=lambda c: parse_iso(self.nodes.get(c, {}).get("modified")), reverse=reverse)
+                except Exception:
+                    pass
 
     # --- SEARCH FUNCTIONALITY ---
     def perform_search(self, event):
@@ -440,6 +553,7 @@ class MindMapApp:
         self.search_res_label.config(text=count_text, fg="#2ecc71")
         self.status_var.set(f"Match {count_text} ({src_text}): {self.nodes[nid]['text']}")
         self.redraw()
+        self.update_toolbar_buttons()
 
     def reveal_node(self, nid):
         current = nid
@@ -492,6 +606,10 @@ class MindMapApp:
             for l in links[:5]:
                 name = l["title"] if isinstance(l, dict) else os.path.basename(str(l))
                 details.append(f"• {name}")
+        # Show modified date if present
+        mod = node.get("modified")
+        if mod:
+            details.append(f"\nModified: {mod}")
         self.tooltip.show("\n".join(details), root_x, root_y)
 
     def reorganize_nodes(self):
@@ -566,6 +684,7 @@ class MindMapApp:
         else:
             self.drag_box_start = (e.x, e.y)
         self.redraw()
+        self.update_toolbar_buttons()
 
     def is_descendant(self, parent_id, child_id):
         if child_id in self.nodes[parent_id]["children"]:
@@ -595,11 +714,24 @@ class MindMapApp:
     def on_release(self, e):
         if self.dragging:
             if self.drop_target and self.dragging != self.root_id:
+                # detach from old parent
                 for pid, node in self.nodes.items():
                     if self.dragging in node["children"]:
                         node["children"].remove(self.dragging)
+                        node["modified"] = iso_now()
+                        # keep manual order updated
+                        if "manual_children" in node:
+                            node["manual_children"] = [c for c in node["children"]]
                         break
+                # attach to new parent
                 self.nodes[self.drop_target]["children"].append(self.dragging)
+                self.nodes[self.drop_target]["modified"] = iso_now()
+                if self.settings.get("auto_sort", "None") == "None":
+                    # In manual mode, update manual_children to reflect new order
+                    self.nodes[self.drop_target]["manual_children"] = list(self.nodes[self.drop_target]["children"])
+                else:
+                    # In sorted mode, apply sorting after reparent
+                    self.apply_sorting()
                 self.reorganize_and_zoom()
             else:
                 self.reorganize_nodes()
@@ -608,6 +740,7 @@ class MindMapApp:
             self.dragging = None
             self.drop_target = None
             self.redraw()
+            self.update_toolbar_buttons()
         if self.drag_box_start:
             x0, y0 = self.drag_box_start
             if e.x < x0 or e.y < y0:
@@ -808,7 +941,9 @@ class MindMapApp:
             "- Reparent: Drag a node and drop it onto another to change its parent.\n"
             "- Expand/Collapse: Double-click a node with children to toggle visibility.\n"
             "- Edit Text: Double-click a node (without resources) or use Right-click > Edit.\n"
-            "- Set Color: Right-click a node and choose 'Set Color...' to change its fill color.\n\n"
+            "- Set Color: Right-click a node and choose 'Set Color...' to change its fill color.\n"
+            "- Manual ordering: When Sort is 'None' you can use the Up/Down icons on the right toolbar\n"
+            "  to change a node's order among its siblings. These are disabled when a sort mode is active.\n\n"
             "🔍 SEARCH\n"
             "- Deep Search: Type in the search bar to find text in Titles, Resource paths, or Note content.\n"
             "- Navigation: Use 'Prev' and 'Next' to cycle through matching nodes.\n\n"
@@ -827,8 +962,11 @@ class MindMapApp:
     def load_settings(self):
         if os.path.exists(self.settings_path):
             with open(self.settings_path, "r") as f:
-                return json.load(f)
-        return {"last_project": "central.json", "recent": []}
+                try:
+                    return json.load(f)
+                except Exception:
+                    return {"last_project": "central.json", "recent": [], "auto_sort": "None"}
+        return {"last_project": "central.json", "recent": [], "auto_sort": "None"}
 
     def save_settings(self):
         with open(self.settings_path, "w") as f:
@@ -846,7 +984,8 @@ class MindMapApp:
     def update_recent_menu(self):
         self.recent_menu.delete(0, "end")
         for f in self.settings.get("recent", []):
-            self.recent_menu.add_command(label=f, command=lambda : self.switch_project(f))
+            # capture f to avoid late-binding in lambda
+            self.recent_menu.add_command(label=f, command=lambda fn=f: self.switch_project(fn))
 
     def switch_project(self, filename):
         self.current_project = filename
@@ -861,6 +1000,7 @@ class MindMapApp:
             if not name.endswith(".json"):
                 name += ".json"
             self.current_project = name
+            now = iso_now()
             self.nodes = {
                 self.root_id: {
                     "text": "Central Idea",
@@ -869,11 +1009,14 @@ class MindMapApp:
                     "expanded": True,
                     "links": [],
                     "color": DEFAULT_NODE_COLOR,
+                    "modified": now,
+                    "manual_children": [],
                 }
             }
             self.save_project()
             self.update_recent_list(name)
             self.update_title()
+            self.apply_sorting()
             self.reorganize_and_zoom()
 
     def open_project(self):
@@ -893,6 +1036,7 @@ class MindMapApp:
         self.root.title(f"Mind Map Pro - [{self.current_project}]")
 
     def save_project(self):
+        # Save nodes with ISO timestamps and manual_children if present
         with open(os.path.join(self.projects_dir, self.current_project), "w") as f:
             json.dump(self.nodes, f, indent=2)
 
@@ -904,7 +1048,20 @@ class MindMapApp:
             for n in self.nodes.values():
                 n.setdefault("links", [])
                 n.setdefault("color", DEFAULT_NODE_COLOR)
+                # Normalize modified to ISO string if numeric; otherwise ensure it's present
+                mod = n.get("modified")
+                if isinstance(mod, (int, float)):
+                    n["modified"] = dt.datetime.utcfromtimestamp(mod).replace(microsecond=0).isoformat()
+                elif not mod:
+                    n["modified"] = dt.datetime.fromtimestamp(0).replace(microsecond=0).isoformat()
+                # ensure manual_children is present (use children as default)
+                if "manual_children" not in n:
+                    n["manual_children"] = list(n.get("children", []))
+            # Apply any stored sort preference
+            if self.settings.get("auto_sort", "None") != "None":
+                self.apply_sorting()
         else:
+            now = iso_now()
             self.nodes = {
                 self.root_id: {
                     "text": "Central Idea",
@@ -913,6 +1070,8 @@ class MindMapApp:
                     "expanded": True,
                     "links": [],
                     "color": DEFAULT_NODE_COLOR,
+                    "modified": now,
+                    "manual_children": [],
                 }
             }
 
@@ -923,7 +1082,8 @@ class MindMapApp:
         font_height = node_font.metrics("linespace")
 
         for nid, node in self.nodes.items():
-            if nid == exclude: continue
+            if nid == exclude:
+                continue
             nx, ny = node["pos"]
 
             tw = node_font.measure(node["text"])
@@ -956,6 +1116,7 @@ class MindMapApp:
         else:
             menu.add_command(label="Reorganize & Zoom", command=self.reorganize_and_zoom)
         menu.post(event.x_root, event.y_root)
+        self.update_toolbar_buttons()
 
     def on_double_click(self, e):
         self.tooltip.hide()
@@ -968,9 +1129,6 @@ class MindMapApp:
                 self.reorganize_and_zoom()
             else:
                 self.edit_node_text(nid)
-
-
-
 
     def manage_resources(self, nid):
         node = self.nodes[nid]
@@ -1053,6 +1211,7 @@ class MindMapApp:
                 manager.wait_window(dlg)
                 if dlg.result:
                     node["links"][idx] = dlg.result
+                    node["modified"] = iso_now()
                     self.save_project()
                     refresh()
             else:
@@ -1064,48 +1223,66 @@ class MindMapApp:
             btn_frame,
             text="+ URL",
             font=("Segoe UI", 6),
-            command=lambda: (
-                (u := simpledialog.askstring("URL", "Address:")) and node["links"].append(u),
-                refresh(),
-                self.save_project(),
-                self.redraw(),
-            ),
+            command=lambda: add_url(),
         ).pack(side="left", padx=4)
 
         tk.Button(
             btn_frame,
             text="+ File",
             font=("Segoe UI", 6),
-            command=lambda: (
-                (f := filedialog.askopenfilename()) and node["links"].append(f),
-                refresh(),
-                self.save_project(),
-                self.redraw(),
-            ),
+            command=lambda: add_file(),
         ).pack(side="left", padx=4)
+
+        def add_url():
+            u = simpledialog.askstring("URL", "Address:")
+            if u:
+                node["links"].append(u)
+                node["modified"] = iso_now()
+                refresh()
+                self.save_project()
+                self.redraw()
+
+        def add_file():
+            f = filedialog.askopenfilename()
+            if f:
+                node["links"].append(f)
+                node["modified"] = iso_now()
+                refresh()
+                self.save_project()
+                self.redraw()
 
         def add_note():
             dlg = NoteDialog(manager)
             manager.wait_window(dlg)
             if dlg.result:
                 node["links"].append(dlg.result)
+                node["modified"] = iso_now()
                 refresh()
                 self.save_project()
                 self.redraw()
 
         tk.Button(btn_frame, text="+ Note", font=("Segoe UI", 6), bg="#d1d8ff", command=add_note).pack(side="left", padx=4)
 
+        def delete_selected():
+            sel = tree.selection()
+            if not sel:
+                return
+            idx = int(sel[0])
+            try:
+                node["links"].pop(idx)
+                node["modified"] = iso_now()
+                refresh()
+                self.save_project()
+                self.redraw()
+            except Exception:
+                pass
+
         tk.Button(
             btn_frame,
             text="Delete",
             fg="red",
             font = ("Segoe UI", 6),
-            command=lambda: (
-                node["links"].pop(int(tree.selection()[0])) if tree.selection() else None,
-                refresh(),
-                self.save_project(),
-                self.redraw(),
-            ),
+            command=delete_selected,
         ).pack(side="left")
 
         refresh()
@@ -1115,7 +1292,16 @@ class MindMapApp:
         new = simpledialog.askstring("Edit", "Text:", initialvalue=self.nodes[nid]["text"])
         if new:
             self.nodes[nid]["text"] = new
+            self.nodes[nid]["modified"] = iso_now()
             self.save_project()
+            # only apply sorting if a sort mode is active (to avoid overriding manual order)
+            if self.settings.get("auto_sort", "None") != "None":
+                self.apply_sorting()
+            else:
+                # keep manual_children in sync with children order
+                parent = self.find_parent(nid)
+                if parent:
+                    self.nodes[parent]["manual_children"] = list(self.nodes[parent]["children"])
             self.redraw()
 
     def add_branch(self):
@@ -1124,6 +1310,7 @@ class MindMapApp:
         name = simpledialog.askstring("New", "Name:")
         if name:
             cid = f"n_{len(self.nodes)}_{os.urandom(2).hex()}"
+            now = iso_now()
             self.nodes[cid] = {
                 "text": name,
                 "children": [],
@@ -1131,8 +1318,16 @@ class MindMapApp:
                 "expanded": True,
                 "links": [],
                 "color": DEFAULT_NODE_COLOR,
+                "modified": now,
+                "manual_children": [],
             }
             self.nodes[self.selected]["children"].append(cid)
+            self.nodes[self.selected]["modified"] = now
+            # update manual_children if in manual mode
+            if self.settings.get("auto_sort", "None") == "None":
+                self.nodes[self.selected]["manual_children"] = list(self.nodes[self.selected]["children"])
+            else:
+                self.apply_sorting()
             self.reorganize_and_zoom()
 
     def delete_node(self):
@@ -1140,8 +1335,19 @@ class MindMapApp:
             for n in self.nodes.values():
                 if self.selected in n["children"]:
                     n["children"].remove(self.selected)
-            del self.nodes[self.selected]
+                    n["modified"] = iso_now()
+                    if "manual_children" in n:
+                        # remove from saved manual ordering
+                        n["manual_children"] = [c for c in n.get("manual_children", []) if c != self.selected]
+            try:
+                del self.nodes[self.selected]
+            except KeyError:
+                pass
+            # keep manual order if None, otherwise apply sorting
+            if self.settings.get("auto_sort", "None") != "None":
+                self.apply_sorting()
             self.reorganize_and_zoom()
+            self.update_toolbar_buttons()
 
     def expand_all(self):
         for n in self.nodes.values():
@@ -1153,6 +1359,83 @@ class MindMapApp:
             if nid != self.root_id:
                 n["expanded"] = False
         self.reorganize_and_zoom()
+
+    # --- Manual reorder helpers ---
+    def find_parent(self, child_id):
+        for pid, node in self.nodes.items():
+            if child_id in node.get("children", []):
+                return pid
+        return None
+
+    def move_selected_up(self):
+        if not self.selected or self.selected == self.root_id:
+            return
+        if self.settings.get("auto_sort", "None") != "None":
+            # disabled under sort modes
+            return
+        parent = self.find_parent(self.selected)
+        if not parent:
+            return
+        children = self.nodes[parent]["children"]
+        idx = children.index(self.selected)
+        if idx > 0:
+            children[idx], children[idx - 1] = children[idx - 1], children[idx]
+            # keep manual record
+            self.nodes[parent]["manual_children"] = list(children)
+            self.nodes[parent]["modified"] = iso_now()
+            self.save_project()
+            self.reorganize_and_zoom()
+            self.redraw()
+            self.update_toolbar_buttons()
+
+    def move_selected_down(self):
+        if not self.selected or self.selected == self.root_id:
+            return
+        if self.settings.get("auto_sort", "None") != "None":
+            return
+        parent = self.find_parent(self.selected)
+        if not parent:
+            return
+        children = self.nodes[parent]["children"]
+        idx = children.index(self.selected)
+        if idx < len(children) - 1:
+            children[idx], children[idx + 1] = children[idx + 1], children[idx]
+            self.nodes[parent]["manual_children"] = list(children)
+            self.nodes[parent]["modified"] = iso_now()
+            self.save_project()
+            self.reorganize_and_zoom()
+            self.redraw()
+            self.update_toolbar_buttons()
+
+    def update_toolbar_buttons(self):
+        """
+        Enable/disable the right-toolbar up/down icons depending on:
+        - a node is selected (and is not root)
+        - current sort mode is 'None' (manual ordering)
+        Also keep visual feedback.
+        """
+        manual = self.settings.get("auto_sort", "None") == "None"
+        if not manual or not self.selected or self.selected == self.root_id:
+            self.icon_up.config(state="disabled")
+            self.icon_down.config(state="disabled")
+            return
+
+        parent = self.find_parent(self.selected)
+        if not parent:
+            self.icon_up.config(state="disabled")
+            self.icon_down.config(state="disabled")
+            return
+
+        children = self.nodes[parent]["children"]
+        idx = children.index(self.selected)
+        if idx > 0:
+            self.icon_up.config(state="normal")
+        else:
+            self.icon_up.config(state="disabled")
+        if idx < len(children) - 1:
+            self.icon_down.config(state="normal")
+        else:
+            self.icon_down.config(state="disabled")
 
     # --- EXPORT / PRINTING HELPERS ---
     def _export_canvas_postscript(self, scale=1):
@@ -1261,7 +1544,16 @@ class MindMapApp:
         if hex_color is None:
             return
         self.nodes[nid]["color"] = hex_color
+        self.nodes[nid]["modified"] = iso_now()
         self.save_project()
+        # preserve manual order if None, else re-sort
+        if self.settings.get("auto_sort", "None") != "None":
+            self.apply_sorting()
+        else:
+            # update manual_children for parent so manual order persists
+            parent = self.find_parent(nid)
+            if parent:
+                self.nodes[parent]["manual_children"] = list(self.nodes[parent]["children"])
         self.redraw()
 
     def clear_node_color(self, nid):
@@ -1272,7 +1564,14 @@ class MindMapApp:
             return
         # Keep the key for compatibility, but set to default
         self.nodes[nid]["color"] = DEFAULT_NODE_COLOR
+        self.nodes[nid]["modified"] = iso_now()
         self.save_project()
+        if self.settings.get("auto_sort", "None") != "None":
+            self.apply_sorting()
+        else:
+            parent = self.find_parent(nid)
+            if parent:
+                self.nodes[parent]["manual_children"] = list(self.nodes[parent]["children"])
         self.redraw()
 
 

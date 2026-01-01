@@ -3,18 +3,25 @@
     "text": "Smart Home",
     "children": [
       "node_1",
-      "node_2",
       "n_8_c13d",
-      "n_9_dcdc"
+      "n_9_dcdc",
+      "node_2"
     ],
     "content": {},
     "expanded": true,
     "pos": [
       0,
-      495.0
+      656.25
     ],
     "links": [],
-    "color": "#ffffff"
+    "color": "#ffffff",
+    "modified": "2026-01-01T17:12:19",
+    "manual_children": [
+      "node_1",
+      "n_8_c13d",
+      "n_9_dcdc",
+      "node_2"
+    ]
   },
   "node_1": {
     "text": "HUB",
@@ -28,24 +35,35 @@
       0.0
     ],
     "links": [],
-    "color": "#ffffff"
+    "color": "#ffffff",
+    "modified": "1970-01-01T00:00:00",
+    "manual_children": [
+      "node_3"
+    ]
   },
   "node_2": {
     "text": "Lights External",
     "children": [
+      "node_7",
       "node_5",
       "node_6",
-      "node_7",
       "n_17_fd10"
     ],
     "content": {},
     "expanded": true,
     "pos": [
       350,
-      280.0
+      1312.5
     ],
     "links": [],
-    "color": "#ffffff"
+    "color": "#ffffff",
+    "modified": "1970-01-01T00:00:00",
+    "manual_children": [
+      "node_7",
+      "node_5",
+      "node_6",
+      "n_17_fd10"
+    ]
   },
   "node_3": {
     "text": "H500",
@@ -69,7 +87,9 @@
         "content": "TP LINK - 130$ - US Only\nhttps://us.store.tp-link.com/checkouts/cn/hWN6pqOoiX62ftVkIOm10OdX/en-us?_r=AQABEit0KAXUR5DR9lP912iUY8OvTtpzDSMALASGu5j8D0s&auto_redirect=false&company_location_id=&edge_redirect=true&locale=en-US&skip_shop_pay=true\n\n\nEBAY - 330$\nhttps://www.ebay.com/itm/277537361155\n\n\n\n"
       }
     ],
-    "color": "#80ff80"
+    "color": "#80ff80",
+    "modified": "2026-01-01T16:56:54",
+    "manual_children": []
   },
   "node_5": {
     "text": "Gina",
@@ -78,10 +98,12 @@
     "expanded": true,
     "pos": [
       700,
-      120.0
+      1235.0
     ],
     "links": [],
-    "color": "#ffffff"
+    "color": "#ffffff",
+    "modified": "1970-01-01T00:00:00",
+    "manual_children": []
   },
   "node_6": {
     "text": "Parking",
@@ -92,10 +114,14 @@
     "expanded": true,
     "pos": [
       700,
-      220.0
+      1370.0
     ],
     "links": [],
-    "color": "#ffffff"
+    "color": "#ffffff",
+    "modified": "1970-01-01T00:00:00",
+    "manual_children": [
+      "n_8_6f05"
+    ]
   },
   "node_7": {
     "text": "Backyard",
@@ -104,21 +130,25 @@
     "expanded": true,
     "pos": [
       700,
-      340.0
+      1100.0
     ],
     "links": [],
-    "color": "#ffffff"
+    "color": "#ffffff",
+    "modified": "1970-01-01T00:00:00",
+    "manual_children": []
   },
   "n_8_6f05": {
     "text": "T1",
     "children": [],
     "pos": [
       1050,
-      220.0
+      1370.0
     ],
     "expanded": true,
     "links": [],
-    "color": "#ffffff"
+    "color": "#ffffff",
+    "modified": "1970-01-01T00:00:00",
+    "manual_children": []
   },
   "n_8_c13d": {
     "text": "DoorBell",
@@ -129,7 +159,7 @@
     ],
     "pos": [
       350,
-      640.0
+      290.0
     ],
     "expanded": true,
     "links": [
@@ -139,19 +169,25 @@
         "content": "Tapo D210 vs D225 vs D230S1 \u2014 Key Differences (Short Table)\n\nQuick Takeaways\n\nD210 \u2014 Best budget choice\n- Cheapest\n- Battery only\n- No hub\n- Basic features\n\nD225 \u2014 Best flexibility\n- Can run wired or battery\n- 180\u00b0 head\u2011to\u2011toe view\n- Strong AI detection\n- Great middle\u2011ground option\n\nD230S1 \u2014 Best overall\n- Highest image quality\n- Spotlight + color night vision\n- PIR sensor reduces false alerts\n- Comes with hub for better reliability\n\n###############################\n\nTapo D210 vs D225 vs D230S1 \u2014 Key Differences (Short Table)\n\nFeature | Tapo D210 | Tapo D225 | Tapo D230S1\nPower | Battery only (6400 mAh) | Battery or Wired (dual\u2011power) | Battery only (6700 mAh)\nResolution | 2K 3MP | 2K QHD (4MP) | 2K 5MP\nField of View | 160\u00b0 diagonal | 180\u00b0 diagonal (head\u2011to\u2011toe) | 170.6\u00b0 H / 140.1\u00b0 V\nNight Vision | IR only | IR (no spotlight listed) | Color night vision with spotlight\nChime / Hub | No hub required | No hub required | Hub included (acts as chime)\nLocal Storage | microSD up to 512GB | microSD up to 512GB | microSD up to 512GB\nAI Detection | Basic motion detection | People / packages / vehicles (AI) | Advanced AI (with PIR sensor)\nBattery Swap | No (built\u2011in) | Yes (battery pack) | Yes (battery pack)\nBest For | Simple, budget setup | Flexible install (wired or battery) | Best image quality + spotlight + hub reliability\n"
       }
     ],
-    "color": "#ffffff"
+    "color": "#ffffff",
+    "modified": "1970-01-01T00:00:00",
+    "manual_children": [
+      "n_14_7ae2",
+      "n_15_f0c7",
+      "n_16_f96a"
+    ]
   },
   "n_9_dcdc": {
     "text": "Camera",
     "children": [
-      "n_10_345d",
       "n_11_4ef7",
       "n_12_74f0",
-      "n_13_ef4e"
+      "n_13_ef4e",
+      "n_10_345d"
     ],
     "pos": [
       350,
-      990.0
+      762.5
     ],
     "expanded": true,
     "links": [
@@ -161,14 +197,21 @@
         "content": "\u05de\u05d8\u05e8\u05d4:\n\u05e4\u05e0\u05d9\u05dd + \u05d6\u05d9\u05d4\u05d5\u05d9 \u05e4\u05e0\u05d9\u05dd + \u05e7\u05d1\u05d5\u05e2\u05d4\n\u05d3\u05d2\u05dd \u05de\u05d5\u05de\u05dc\u05e5: C260\n\u05de\u05d7\u05d9\u05e8 \u05de\u05e9\u05d5\u05e2\u05e8: 220\u2013300 \u20aa\n\n\u05de\u05d8\u05e8\u05d4:\n\u05e4\u05e0\u05d9\u05dd + \u05d6\u05d9\u05d4\u05d5\u05d9 \u05e4\u05e0\u05d9\u05dd + \u05de\u05e2\u05e7\u05d1 \u05ea\u05e0\u05d5\u05e2\u05d4 (PTZ)\n\u05d3\u05d2\u05dd \u05de\u05d5\u05de\u05dc\u05e5: C560WS / TC46\n\u05de\u05d7\u05d9\u05e8 \u05de\u05e9\u05d5\u05e2\u05e8: 350\u2013450 \u20aa\n\n\u05de\u05d8\u05e8\u05d4:\n\u05d7\u05d5\u05e5 \u05d0\u05dc\u05d7\u05d5\u05d8\u05d9 (\u05d3\u05d5\u05e8 \u05d7\u05d3\u05e9)\n\u05d3\u05d2\u05dd \u05de\u05d5\u05de\u05dc\u05e5: C402 / C403\n\u05de\u05d7\u05d9\u05e8 \u05de\u05e9\u05d5\u05e2\u05e8: 230\u2013300 \u20aa\n\n\n"
       }
     ],
-    "color": "#ffffff"
+    "color": "#ffffff",
+    "modified": "2026-01-01T17:11:58",
+    "manual_children": [
+      "n_11_4ef7",
+      "n_12_74f0",
+      "n_13_ef4e",
+      "n_10_345d"
+    ]
   },
   "n_10_345d": {
     "text": "C660",
     "children": [],
     "pos": [
       700,
-      840.0
+      965.0
     ],
     "expanded": true,
     "links": [
@@ -179,14 +222,16 @@
       },
       "https://www.tp-link.com/sa/home-networking/cloud-camera/tapo-c660-kit/"
     ],
-    "color": "#ffffff"
+    "color": "#ffffff",
+    "modified": "1970-01-01T00:00:00",
+    "manual_children": []
   },
   "n_11_4ef7": {
     "text": "C260",
     "children": [],
     "pos": [
       700,
-      940.0
+      560.0
     ],
     "expanded": true,
     "links": [
@@ -196,14 +241,16 @@
         "content": "C260 - Track motion Ai Detection\n"
       }
     ],
-    "color": "#ffffff"
+    "color": "#ffffff",
+    "modified": "2026-01-01T17:11:50",
+    "manual_children": []
   },
   "n_12_74f0": {
     "text": "C402 / C403",
     "children": [],
     "pos": [
       700,
-      1040.0
+      695.0
     ],
     "expanded": true,
     "links": [
@@ -213,25 +260,29 @@
         "content": "C402 - outdoor with Ai Face detection\n\nNot PTZ"
       }
     ],
-    "color": "#ffffff"
+    "color": "#ffffff",
+    "modified": "1970-01-01T00:00:00",
+    "manual_children": []
   },
   "n_13_ef4e": {
     "text": "C560WS / TC46",
     "children": [],
     "pos": [
       700,
-      1140.0
+      830.0
     ],
     "expanded": true,
     "links": [],
-    "color": "#ffffff"
+    "color": "#ffffff",
+    "modified": "1970-01-01T00:00:00",
+    "manual_children": []
   },
   "n_14_7ae2": {
     "text": "D210",
     "children": [],
     "pos": [
       700,
-      540.0
+      155.0
     ],
     "expanded": true,
     "links": [
@@ -241,39 +292,47 @@
         "content": "Tapo D210\n \u05d4\u05d5\u05d0 \u05d4\u05d3\u05d2\u05dd \u05d4\u05d9\u05d7\u05d9\u05d3 \u05e9\u05ea\u05d5\u05d0\u05dd \u05dc\nTapo H500\n\n\u05e0\u05d9\u05ea\u05df \u05dc\u05d4\u05e9\u05ea\u05de\u05e9 \u05d1\u05d5 \u05db\n\u05de\u05e6\u05dc\u05de\u05ea \u05d0\u05d1\u05d8\u05d7\u05d4 \u05e2\u05dd \u05d6\u05d9\u05d4\u05d5\u05d9 \u05ea\u05e0\u05d5\u05e2\u05d4 \u05d5\u05d4\u05ea\u05e8\u05d0\u05d5\u05ea \u05de\u05d9\u05d3\u05d9\u05d5\u05ea\n\u05d0\u05e4\u05e9\u05e8 \u05dc\u05d4\u05d2\u05d3\u05d9\u05e8 \u05d0\u05d6\u05d5\u05e8\u05d9 \u05e4\u05e2\u05d9\u05dc\u05d5\u05ea \u05d5\u05e8\u05d2\u05d9\u05e9\u05d5\u05ea \u05dc\u05d6\u05d9\u05d4\u05d5\u05d9.  \n\u05db\u05dc \u05d4\u05d4\u05e7\u05dc\u05d8\u05d5\u05ea \u05e0\u05e9\u05de\u05e8\u05d5\u05ea \u05d1\u2011H500 \n\u05dc\u05e9\u05d9\u05e4\u05d5\u05e8 \u05d0\u05de\u05d9\u05e0\u05d5\u05ea.  \n\u05d4\u05de\u05db\u05e9\u05d9\u05e8 \u05de\u05e9\u05dc\u05d1 \u05e4\u05e2\u05de\u05d5\u05df \u05d3\u05dc\u05ea \u05d5\u05de\u05e6\u05dc\u05de\u05ea \u05d0\u05d1\u05d8\u05d7\u05d4 \u05d1\u05d9\u05d7\u05d9\u05d3\u05d4 \u05d0\u05d7\u05ea.\n\n####  \u05d7\u05e9\u05d5\u05d1  #####\n\u05e2\u05d5\u05d1\u05d3 \u05e2\u05dc \u05e1\u05d5\u05dc\u05dc\u05d4 \u05d5\u05e6\u05e8\u05d9\u05da \u05d4\u05d8\u05e2\u05e0\u05d4 \u05db\u05dc \u05d7\u05e6\u05d9 \u05e9\u05e0\u05d4\n"
       }
     ],
-    "color": "#ffffff"
+    "color": "#ffffff",
+    "modified": "1970-01-01T00:00:00",
+    "manual_children": []
   },
   "n_15_f0c7": {
     "text": "D225",
     "children": [],
     "pos": [
       700,
-      640.0
+      290.0
     ],
     "expanded": true,
     "links": [],
-    "color": "#80ff80"
+    "color": "#80ff80",
+    "modified": "1970-01-01T00:00:00",
+    "manual_children": []
   },
   "n_16_f96a": {
     "text": "D230",
     "children": [],
     "pos": [
       700,
-      740.0
+      425.0
     ],
     "expanded": true,
     "links": [],
-    "color": "#ffffff"
+    "color": "#ffffff",
+    "modified": "1970-01-01T00:00:00",
+    "manual_children": []
   },
   "n_17_fd10": {
     "text": "Roof",
     "children": [],
     "pos": [
       700,
-      440.0
+      1525.0
     ],
     "expanded": true,
     "links": [],
-    "color": "#ffffff"
+    "color": "#ffffff",
+    "modified": "1970-01-01T00:00:00",
+    "manual_children": []
   }
 }
