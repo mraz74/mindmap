@@ -25,7 +25,6 @@ DEFAULT_NODE_COLOR = "#ffffff"
 # --- Add sort option of nodes children order by name
 # --- Add Icon when Node has resources + Number of children inside the block
 # --- when open a window do it in the same screen (in case of multiple PC screens)
-# --- Decide to Highlight a Node (e.g. Mark the user preferred options)
 
 # --- HIGH DPI FIX ---
 try:
@@ -49,9 +48,9 @@ class NoteDialog(tk.Toplevel):
         self.protocol("WM_DELETE_WINDOW", self.save_and_close)
 
         # Title Entry
-        tk.Label(self, text="Title:", font=("Segoe UI", 9, "bold")).pack(anchor="w", padx=15, pady=(10, 0))
+        tk.Label(self, text="Title:", font=("Segoe UI", 8, "bold")).pack(anchor="w", padx=15, pady=(10, 0))
         self.title_var = tk.StringVar(value=initial_data.get("title", "New Note") if initial_data else "New Note")
-        tk.Entry(self, textvariable=self.title_var, font=("Segoe UI", 12), relief="flat", bg="#f8f9fa").pack(
+        tk.Entry(self, textvariable=self.title_var, font=("Segoe UI", 10), relief="flat", bg="#f8f9fa").pack(
             fill="x", padx=15, pady=5
         )
 
