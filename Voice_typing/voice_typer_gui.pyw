@@ -1,3 +1,53 @@
+"""
+Voice Typer - Privacy Information
+==================================
+
+Voice Typer records your voice, sends it to Google's Gemini AI for transcription,
+and pastes the resulting text wherever your cursor is.
+Please read the following before using it.
+
+1. Your recordings are sent to Google
+   - Every recording is uploaded to the Google Gemini API over the internet.
+   - On the FREE tier of the Gemini API, Google may use what you send (and the
+     transcription it returns) to improve its products, and human reviewers may
+     read it. Do not dictate passwords, medical, financial or other sensitive
+     information on the free tier.
+   - On a PAID (billing-enabled) account, Google states it does not use your data
+     to improve its products, but may keep it for a limited time to detect abuse.
+   - These terms are set by Google and can change. Check the current terms:
+     https://ai.google.dev/gemini-api/terms
+
+2. When the microphone is recording
+   - The microphone is open while the app runs, but audio is only kept between
+     pressing Start (Ctrl+Alt+Space or the mic button) and pressing Stop.
+     The button blinks red while recording.
+   - The recording is saved briefly as "temp_recording.wav" in the app's working
+     folder and deleted right after transcription. If the app is closed or
+     crashes mid-transcription, that file may be left behind; delete it manually.
+
+3. Keyboard
+   - The app listens to the keyboard globally to detect its shortcut
+     (Ctrl+Alt+Space). Keystrokes are not recorded, saved or sent anywhere.
+
+4. Clipboard and pasting
+   - To paste the text, the app puts it on the clipboard, presses Ctrl+V, then
+     restores the previous clipboard text. Images or files on the clipboard are
+     not restored.
+   - The text is pasted into whichever window is active when transcription
+     finishes, so make sure the cursor is where you want the text.
+
+5. Your API key
+   - The Gemini API key is read from the GEMINI_API_KEY Windows user environment
+     variable. It is never stored in this file. Programs running under your Windows
+     account can read it. Never share the key or put it in the code.
+   - If the key is exposed, delete it at https://aistudio.google.com/api-keys
+     and create a new one.
+
+6. What is NOT kept
+   - The app does not save transcripts or recordings. Transcripts are printed to
+     the console only when run with python.exe (not .pyw).
+"""
+
 # --------------------------------------------------------------------------------------------------------
 # - pyw - will run without terminal window
 # - Pre-req vvv---
@@ -58,6 +108,7 @@ BLUE, BLUE_HOVER = "#1f6fd1", "#1859a8"
 RED, RED_HOVER = "#e0443e", "#b83631"
 ORANGE, GREEN = "#f39c12", "#2ecc71"
 READY_TEXT = "Ctrl+Alt+Space"
+PRIVACY_INFO = (__doc__ or "").strip()  # הטקסט בראש הקובץ - מוצג בכפתור i
 
 
 class VoiceTyperApp(ctk.CTk):
@@ -97,6 +148,16 @@ class VoiceTyperApp(ctk.CTk):
             font=ctk.CTkFont(size=11), command=self.quit_app,
         )
         self.close_btn.pack(side="right", padx=(0, 6))
+
+        # כפתור מידע (פרטיות)
+        self.info_btn = ctk.CTkButton(
+            self, text="i", width=22, height=22, corner_radius=11,
+            fg_color="transparent", hover_color="#3a3a3a", text_color=FG_DIM,
+            font=ctk.CTkFont(family="Georgia", size=13, weight="bold", slant="italic"),
+            command=self.show_info,
+        )
+        self.info_btn.pack(side="right", padx=(0, 2))
+        self.info_window = None
 
         # גרירת החלונית בעזרת העכבר (על הרקע או על הטקסט)
         for w in (self, self.status_label):
@@ -140,6 +201,24 @@ class VoiceTyperApp(ctk.CTk):
         x = self.winfo_screenwidth() - w - margin
         y = self.winfo_screenheight() - h - margin - 48  # מעל שורת המשימות
         self.wm_geometry(f"+{x}+{y}")  # tk ישיר, בלי שינוי קנה מידה של customtkinter
+
+    def show_info(self):
+        """חלון מידע על פרטיות (נפתח פעם אחת; לחיצה נוספת מביאה אותו לקדמה)."""
+        if self.info_window is not None and self.info_window.winfo_exists():
+            self.info_window.lift()
+            self.info_window.focus_force()
+            return
+        win = ctk.CTkToplevel(self)
+        win.title("Voice Typer - Privacy")
+        win.geometry("560x520")
+        win.attributes("-topmost", True)
+        box = ctk.CTkTextbox(win, wrap="word", font=ctk.CTkFont(family="Segoe UI", size=12))
+        box.pack(fill="both", expand=True, padx=10, pady=(10, 6))
+        box.insert("0.0", PRIVACY_INFO)
+        box.configure(state="disabled")  # קריאה בלבד
+        ctk.CTkButton(win, text="Close", width=90, command=win.destroy).pack(pady=(0, 10))
+        win.after(100, win.focus_force)
+        self.info_window = win
 
     def _start_drag(self, event):
         self._drag_dx = event.x_root - self.winfo_x()
